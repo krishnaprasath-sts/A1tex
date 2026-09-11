@@ -15,6 +15,8 @@ const envSchema = z.object({
   DB_NAME: z.string().default('a1tex_db'),
   DB_DIALECT: z.literal('mysql').default('mysql'),
   DB_PORT: z.coerce.number().default(3306),
+  DB_SSL: z.coerce.boolean().default(false),
+  CORS_ORIGIN: z.string().optional().default(''),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   API_URL: z.string().url().default('http://localhost:5005'),
   ADMIN_PANEL_URL: z.string().url().default('http://localhost:5173'),

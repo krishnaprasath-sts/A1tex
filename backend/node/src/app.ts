@@ -43,7 +43,9 @@ app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'))
 app.use(cors({
   origin(origin, callback) {
     if (env.NODE_ENV === 'development') return callback(null, true)
+    if (env.CORS_ORIGIN === '*' || process.env.CORS_ORIGIN === '*') return callback(null, true)
     if (!origin || allowedOrigins.has(origin)) return callback(null, true)
+    if (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) return callback(null, true)
     return callback(new Error(`CORS blocked for origin: ${origin}`))
   },
   credentials: true,
