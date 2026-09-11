@@ -1,0 +1,62 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # ── 1. Force HTTPS ──────────────────────────────────────────────────────────
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # ── 2. Allow ACME challenge / SSL cert renewal ──────────────────────────────
+  RewriteRule ^\.well-known(?:/(.*)|$) - [L]
+
+  # ── 3. Pass through existing static files in public directory ───────────────
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # ── 4. Reverse Proxy to Next.js Application ─────────────────────────────────
+  # Next.js running on local port 3000 (adjust port if running on a custom port)
+  RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+</IfModule>
+
+# ── 5. Proxy Headers ──────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+  RequestHeader set X-Forwarded-Proto "https" env=HTTPS
+  RequestHeader set X-Forwarded-Port "443" env=HTTPS
+</IfModule>
+
+# ── 6. MIME Types ─────────────────────────────────────────────────────────────
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/json .json
+  AddType font/woff .woff
+  AddType font/woff2 .woff2
+</IfModule>
+
+# ── 7. Compression (Gzip / Deflate) ───────────────────────────────────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+  AddOutputFilterByType DEFLATE application/javascript application/x-javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml font/woff font/woff2
+</IfModule>
+
+# ── 8. Security & Static Cache Headers ────────────────────────────────────────
+<IfModule mod_headers.c>
+  # Static asset caching for public assets
+  <FilesMatch "\.(woff|woff2|png|jpg|jpeg|gif|svg|ico|webp)$">
+    Header set Cache-Control "max-age=31536000, public, immutable"
+  </FilesMatch>
+
+  # Security headers
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes

@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+*/node_modules/
+*/*/node_modules/
+.pnp
+.pnp.js
+
+# Environment Variables & Secrets (CRITICAL: Do NOT commit active secrets)
+.env
+.env.*
+!.env.example
+*.env
+
+# Production & Build outputs
+dist/
+build/
+out/
+.next/
+*/dist/
+*/*/dist/
+*/build/
+*/*/build/
+*/out/
+*/*/out/
+*/.next/
+*/*/next/
+
+# Large Archives & Backups (prevents GitHub 100MB rejection)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+assets.zip
+.next.zip
+
+# Debug and Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+scratch/
+*/scratch/
+*/*/scratch/
+
+# TypeScript build info
+*.tsbuildinfo
+*.tsbuildinfo*
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/

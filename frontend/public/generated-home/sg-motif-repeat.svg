@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="360" viewBox="0 0 360 360">
+  <rect width="360" height="360" fill="none"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#C29B57" opacity=".44" stroke-width="1.4">
+      <path d="M180 44c34 36 56 70 56 100 0 38-25 68-56 92-31-24-56-54-56-92 0-30 22-64 56-100z"/>
+      <path d="M180 70c19 28 31 51 31 73 0 25-13 46-31 64-18-18-31-39-31-64 0-22 12-45 31-73z"/>
+      <path d="M180 101v108M146 150h68M158 119c18 11 30 28 33 51M202 119c-18 11-30 28-33 51"/>
+    </g>
+    <g stroke="#6B1A2A" opacity=".17" stroke-width="1">
+      <circle cx="180" cy="180" r="118"/>
+      <circle cx="180" cy="180" r="86"/>
+      <path d="M62 180h236M180 62v236M96 96l168 168M264 96 96 264"/>
+    </g>
+    <g stroke="#C29B57" opacity=".3" stroke-width="1.1">
+      <path d="M30 30c38 12 64 38 76 76M330 30c-38 12-64 38-76 76M30 330c38-12 64-38 76-76M330 330c-38-12-64-38-76-76"/>
+      <path d="M30 30c20 6 34 20 40 40M330 30c-20 6-34 20-40 40M30 330c20-6 34-20 40-40M330 330c-20-6-34-20-40-40"/>
+    </g>
+  </g>
+</svg>

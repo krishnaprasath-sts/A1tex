@@ -1,0 +1,294 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { ChevronLeft, ChevronRight, Star } from 'lucide-react'
+
+/* ── Slide 1: Deep Maroon – Dual Polaroid Cards ─── */
+function Slide1() {
+  return (
+    <div className="flex flex-col md:flex-row items-center justify-center w-full h-full p-8 md:p-16 gap-4 md:gap-12 relative overflow-hidden">
+      {/* Left – Dual Polaroids */}
+      <div className="w-full md:w-1/2 flex justify-center items-center relative h-64 md:h-full">
+        {/* Back polaroid */}
+        <div
+          className="absolute bg-white p-2 shadow-2xl z-10 transition-transform duration-500 hover:rotate-0"
+          style={{
+            left: '10%', top: '5%',
+            width: 140, height: 200,
+            transform: 'rotate(-5deg)',
+          }}
+        >
+          <div
+            className="w-full h-full bg-cover bg-center"
+            style={{ backgroundImage: 'url(/hero-card2.png)' }}
+          />
+        </div>
+        {/* Front polaroid */}
+        <div
+          className="absolute bg-white p-2 shadow-xl z-20 transition-transform duration-500 hover:rotate-0"
+          style={{
+            right: '10%', bottom: '5%',
+            width: 145, height: 210,
+            transform: 'rotate(4deg)',
+          }}
+        >
+          <div
+            className="w-full h-full bg-cover bg-center"
+            style={{ backgroundImage: 'url(/hero-card1.png)' }}
+          />
+        </div>
+      </div>
+
+      {/* Right – Text */}
+      <div className="w-full md:w-1/2 text-center md:text-left flex flex-col items-center md:items-start z-30 mt-8 md:mt-0">
+        <p
+          className="text-[11px] tracking-[4px] uppercase font-semibold mb-3"
+          style={{ color: '#D99C5B' }}
+        >
+          New Collection
+        </p>
+        <h2
+          className="text-4xl md:text-6xl text-white mb-4 leading-tight italic"
+          style={{ fontFamily: 'Playfair Display, serif', fontWeight: 300 }}
+        >
+          Just Dropped<br />For You
+        </h2>
+        <div className="w-24 h-px mb-8 relative" style={{ background: '#D99C5B' }}>
+          <Star
+            className="absolute -right-3 -top-2"
+            size={14}
+            color="#D99C5B"
+            fill="#D99C5B"
+          />
+        </div>
+        <Link
+          href="/collections/organic-sarees"
+          className="no-underline px-8 py-3 text-[11px] tracking-[3px] uppercase font-bold transition-colors duration-300"
+          style={{
+            border: '2px solid #D99C5B',
+            color: '#D99C5B',
+            background: 'rgba(0,0,0,0.1)',
+          }}
+        >
+          Explore Now
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/* ── Slide 2: Dark Forest Green – Full Width ─────── */
+function Slide2() {
+  return (
+    <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+      {/* BG image */}
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: 'url(/saree3.png)' }}
+      />
+      {/* Dark overlay */}
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.5)' }} />
+
+      <div className="relative z-10 text-center flex flex-col items-center px-4">
+        <p
+          className="tracking-[5px] uppercase text-[11px] md:text-sm mb-4 font-semibold"
+          style={{ color: '#E2A969' }}
+        >
+          Exclusively Curated
+        </p>
+        <h2
+          className="text-6xl md:text-[90px] text-white mb-6 font-light tracking-wide uppercase"
+          style={{ fontFamily: 'Playfair Display, serif' }}
+        >
+          SUFIANA
+        </h2>
+        <p
+          className="max-w-xl mx-auto mb-10 font-light tracking-wider text-sm md:text-base"
+          style={{ color: 'rgba(255,255,255,0.85)' }}
+        >
+          A collection of culture and timeless beauty.
+        </p>
+        <Link
+          href="/collections/organic-sarees"
+          className="no-underline px-10 py-3.5 text-[11px] tracking-[3px] uppercase font-bold transition-colors duration-300 shadow-xl"
+          style={{ background: 'white', color: '#2D4A22' }}
+        >
+          View Collection
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/* ── Slide 3: Warm Gold – Offer with Dashed Box ─── */
+function Slide3() {
+  return (
+    <div className="flex flex-col md:flex-row items-center justify-center w-full h-full p-8 md:p-16 gap-8 relative overflow-hidden">
+      {/* Left – Framed image + decorative bag */}
+      <div className="w-full md:w-1/2 flex justify-center items-center relative h-64 md:h-full">
+        {/* Main frame */}
+        <div
+          className="bg-white p-2 shadow-2xl relative z-10"
+          style={{ width: 220, height: 290 }}
+        >
+          <div
+            className="w-full h-full bg-cover bg-center"
+            style={{ backgroundImage: 'url(/hero-model.png)' }}
+          />
+        </div>
+        {/* Decorative bag tag */}
+        <div
+          className="absolute z-20 flex flex-col items-center justify-center shadow-xl"
+          style={{
+            right: '8%', bottom: '8%',
+            width: 88, height: 116,
+            background: '#FDFBF7',
+            borderTop: '4px solid #2C241B',
+            transform: 'rotate(6deg)',
+          }}
+        >
+          <div
+            className="absolute -top-5 rounded-t-full"
+            style={{ width: 28, height: 16, border: '2px solid #2C241B', borderBottom: 'none' }}
+          />
+          <span
+            className="text-[9px] font-serif text-center px-1 mt-2"
+            style={{ color: '#2C241B' }}
+          >
+            SR Akila<br />Silks
+          </span>
+        </div>
+      </div>
+
+      {/* Right – Text + discount box */}
+      <div className="w-full md:w-1/2 text-center md:text-left flex flex-col items-center md:items-start z-30">
+        <h2
+          className="text-5xl md:text-7xl mb-2 leading-tight italic"
+          style={{ fontFamily: 'Playfair Display, serif', color: '#2C241B', fontWeight: 400 }}
+        >
+          Just Arrived
+        </h2>
+        <p className="text-sm md:text-base mb-6 max-w-sm font-medium" style={{ color: 'rgba(44,26,0,0.75)' }}>
+          A perfect blend of comfort, style, and simplicity for your daily saree look.
+        </p>
+
+        {/* Dashed discount box */}
+        <div
+          className="p-4 md:p-6 mb-8 w-full max-w-sm"
+          style={{
+            border: '2px dashed #2C241B',
+            background: 'rgba(217,156,91,0.35)',
+          }}
+        >
+          <div className="flex flex-col items-center gap-1.5">
+            <h3
+              className="text-3xl md:text-4xl font-bold"
+              style={{ fontFamily: 'Playfair Display, serif', color: '#2C241B' }}
+            >
+              15% OFF
+            </h3>
+            <p className="text-[10px] tracking-[3px] uppercase font-bold" style={{ color: '#2C241B' }}>
+              Sitewide
+            </p>
+            <span className="text-[11px]" style={{ color: 'rgba(44,26,0,0.65)' }}>
+              + ₹300 OFF On First Order
+            </span>
+            <div
+              className="mt-2 px-4 py-2 text-[11px] tracking-widest font-bold font-mono"
+              style={{ background: '#2C241B', color: '#D99C5B' }}
+            >
+              CODE: SUTI300
+            </div>
+          </div>
+        </div>
+
+        <Link
+          href="/collections/organic-sarees"
+          className="no-underline px-10 py-4 text-[11px] tracking-[3px] uppercase font-bold transition-colors duration-300 shadow-xl"
+          style={{ background: '#2C241B', color: 'white' }}
+        >
+          Shop Now
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main Hero Carousel ──────────────────────────── */
+export default function HeroSection() {
+  const [currentSlide, setCurrentSlide] = useState(0)
+
+  const slides = [
+    { id: 0, bg: '#4A2024', content: <Slide1 /> },
+    { id: 1, bg: '#2D4A22', content: <Slide2 /> },
+    { id: 2, bg: '#D99C5B', content: <Slide3 /> },
+  ]
+
+  const next = () => setCurrentSlide(p => (p + 1) % slides.length)
+  const prev = () => setCurrentSlide(p => (p === 0 ? slides.length - 1 : p - 1))
+
+  useEffect(() => {
+    const t = setInterval(next, 5000)
+    return () => clearInterval(t)
+  }, [])
+
+  return (
+    <div
+      className="relative w-full overflow-hidden group"
+      style={{ height: 'clamp(420px, 37.5vw, 1200px)' }}
+    >
+      {/* Slide track */}
+      <div
+        className="flex w-full h-full transition-transform duration-700 ease-in-out"
+        style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+      >
+        {slides.map(slide => (
+          <div
+            key={slide.id}
+            className="w-full h-full flex-shrink-0"
+            style={{ background: slide.bg }}
+          >
+            {slide.content}
+          </div>
+        ))}
+      </div>
+
+      {/* Prev button */}
+      <button
+        onClick={prev}
+        className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 z-20"
+        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+        aria-label="Previous slide"
+      >
+        <ChevronLeft size={22} />
+      </button>
+
+      {/* Next button */}
+      <button
+        onClick={next}
+        className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 z-20"
+        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+        aria-label="Next slide"
+      >
+        <ChevronRight size={22} />
+      </button>
+
+      {/* Dot indicators */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-3 z-20">
+        {slides.map((_, idx) => (
+          <button
+            key={idx}
+            onClick={() => setCurrentSlide(idx)}
+            className="h-2.5 rounded-full transition-all duration-300"
+            style={{
+              width: currentSlide === idx ? 32 : 10,
+              background: currentSlide === idx ? 'white' : 'rgba(255,255,255,0.4)',
+            }}
+            aria-label={`Go to slide ${idx + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}

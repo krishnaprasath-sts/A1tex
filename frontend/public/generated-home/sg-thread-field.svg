@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+  <rect width="1440" height="760" fill="#FAF6EE"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M-120 210C210 430 420 40 760 288c290 212 520-20 820 150" stroke="#C29B57" stroke-width="2" opacity=".28"/>
+    <path d="M-120 260C230 480 430 90 790 330c300 200 510 8 820 190" stroke="#C29B57" stroke-width="1.3" opacity=".23"/>
+    <path d="M-120 310C260 530 470 150 830 388c290 190 490 50 810 230" stroke="#6B1A2A" stroke-width="1.2" opacity=".1"/>
+    <path d="M1220-80C1050 70 1070 236 898 400c-190 181-420 121-586 344" stroke="#6B1A2A" stroke-width="1.5" opacity=".12"/>
+    <path d="M1280-40C1120 110 1140 258 956 440c-200 198-438 146-600 350" stroke="#C29B57" stroke-width="1.1" opacity=".18"/>
+  </g>
+  <g fill="none" stroke="#C29B57" opacity=".16">
+    <circle cx="1180" cy="160" r="92" stroke-width="2" stroke-dasharray="12 16"/>
+    <circle cx="1180" cy="160" r="148" stroke-width="1" stroke-dasharray="7 20"/>
+    <circle cx="1180" cy="160" r="215" stroke-width=".8"/>
+    <circle cx="170" cy="640" r="104" stroke-width="1.5" stroke-dasharray="12 24"/>
+    <circle cx="170" cy="640" r="170" stroke-width=".8"/>
+  </g>
+</svg>

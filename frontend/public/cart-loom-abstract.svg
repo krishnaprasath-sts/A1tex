@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" fill="none">
+  <rect width="1200" height="640" fill="#FBF9F6"/>
+  <path d="M0 0h1200v640H0z" fill="url(#paper)"/>
+  <g opacity=".42" stroke="#7A3B27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M165 118h205M282 210v134h168M450 344l-18-14M450 344l-18 14"/>
+    <path d="M735 188h162v134H710M710 322l18-14M710 322l18 14"/>
+    <path d="M645 492h238M883 492l-18-14M883 492l-18 14"/>
+    <path d="M565 140v74M565 214l-12-14M565 214l12-14M620 140v74M620 214l-12-14M620 214l12-14"/>
+  </g>
+  <g transform="translate(78 54)" opacity=".62">
+    <circle cx="128" cy="96" r="76" fill="#D9A35D" fill-opacity=".18" stroke="#7A3B27" stroke-width="5"/>
+    <circle cx="128" cy="96" r="10" fill="#C98945" stroke="#7A3B27" stroke-width="4"/>
+    <g stroke="#7A3B27" stroke-width="4" stroke-linecap="round">
+      <path d="M128 20v152M52 96h152M74 42l108 108M182 42L74 150"/>
+      <path d="M88 26l80 140M168 26L88 166M58 61l140 70M198 61L58 131"/>
+    </g>
+    <path d="M94 172h68l18 58H76l18-58Z" fill="#B7773A" fill-opacity=".34" stroke="#7A3B27" stroke-width="4"/>
+    <path d="M180 230h142" stroke="#7A3B27" stroke-width="5"/>
+    <path d="M304 134h56v96h-56z" fill="#B7773A" fill-opacity=".34" stroke="#7A3B27" stroke-width="4"/>
+    <path d="M203 166h100M302 154l-64-22" stroke="#7A3B27" stroke-width="4"/>
+  </g>
+  <g transform="translate(458 210)" opacity=".7">
+    <path d="M0 70h310M22 0h266M44 266h220M40 0v266M266 0v266" stroke="#6A351F" stroke-width="9" stroke-linecap="round"/>
+    <path d="M28 44h254M28 96h254M28 148h254" stroke="#9B653D" stroke-width="6" stroke-linecap="round"/>
+    <path d="M76 16v214M120 16v214M164 16v214M208 16v214" stroke="#6A351F" stroke-width="3" opacity=".8"/>
+    <path d="M16 184c64-28 144-35 278-8v50c-112-30-198-21-278 8v-50Z" fill="#507A4E" fill-opacity=".55" stroke="#6A351F" stroke-width="5"/>
+    <path d="M33 194c70-14 151-19 242 0M33 211c70-14 151-19 242 0" stroke="#D2A448" stroke-width="3"/>
+    <path d="M0 70l34 92M310 70l-34 92M44 266l-30 54M264 266l30 54" stroke="#6A351F" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="78" cy="42" r="10" fill="#D2A448" stroke="#6A351F" stroke-width="4"/>
+    <circle cx="232" cy="42" r="10" fill="#D2A448" stroke="#6A351F" stroke-width="4"/>
+  </g>
+  <g transform="translate(126 432)" opacity=".62">
+    <path d="M0 94c80-60 198-62 318-18v76C206 114 92 114 0 172V94Z" fill="#164E75" fill-opacity=".58" stroke="#5B311F" stroke-width="5"/>
+    <path d="M26 112c78-45 170-45 266-12M30 138c80-38 172-36 260-8" stroke="#D2A448" stroke-width="4"/>
+    <ellipse cx="42" cy="93" rx="42" ry="58" fill="#164E75" fill-opacity=".75" stroke="#5B311F" stroke-width="5"/>
+    <path d="M52 39c25 30 25 78 0 108M37 39c25 30 25 78 0 108" stroke="#D2A448" stroke-width="3"/>
+  </g>
+  <g transform="translate(900 72)" opacity=".6">
+    <circle cx="50" cy="66" r="42" fill="#C98945" fill-opacity=".3" stroke="#6A351F" stroke-width="5"/>
+    <path d="M25 43c30 6 48 23 58 58M22 72c24-12 50-12 78 0" stroke="#507A4E" stroke-width="4"/>
+    <circle cx="210" cy="58" r="74" fill="#F4E5D5" stroke="#6A351F" stroke-width="5"/>
+    <path d="M152 22h116M152 46h116M152 70h116M152 94h116M174 0v116M198 0v116M222 0v116M246 0v116" stroke="#507A4E" stroke-width="8" opacity=".65"/>
+    <path d="M152 34h116M152 82h116M186 0v116M234 0v116" stroke="#7A1F2C" stroke-width="5" opacity=".6"/>
+    <path d="M164 130v62M194 130v76M224 130v66M254 130v82" stroke="#6A351F" stroke-width="3"/>
+  </g>
+  <g transform="translate(956 366)" opacity=".56">
+    <path d="M76 20c40 28 48 82 18 138H58C28 102 36 48 76 20Z" fill="#A85A33" fill-opacity=".58" stroke="#5B311F" stroke-width="5"/>
+    <path d="M76 20V0M54 50c18 10 30 10 44 0M76 158v124M42 282h68M76 204l-42 78M76 204l42 78" stroke="#5B311F" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="76" cy="0" r="9" fill="#A85A33" stroke="#5B311F" stroke-width="4"/>
+  </g>
+  <defs>
+    <radialGradient id="paper" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(600 320) rotate(90) scale(430 760)">
+      <stop stop-color="#fff" stop-opacity=".92"/>
+      <stop offset="1" stop-color="#EAD3CE" stop-opacity=".18"/>
+    </radialGradient>
+  </defs>
+</svg>

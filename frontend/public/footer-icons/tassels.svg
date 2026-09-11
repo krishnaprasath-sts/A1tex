@@ -1,0 +1,12 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="35,0 85,0 120,35 120,85 85,120 35,120 0,85 0,35" fill="#A33B24"/>
+  <g transform="translate(28, 28)" stroke="#FFFFFF" fill="none">
+    <path d="M22 8v20M32 8v24M42 8v20" stroke-width="2.5" />
+    <path d="M18 28c-4 4-6 14-4 22M22 28c2 6 2 16 0 24" stroke-width="2" />
+    <path d="M28 32c-2 6-2 14 0 22M36 32c2 6 2 14 0 22" stroke-width="2" />
+    <path d="M42 28c2 6 2 16 0 24M46 28c4 4 6 14 4 22" stroke-width="2" />
+    <circle cx="22" cy="6" r="3" fill="#FFFFFF" />
+    <circle cx="32" cy="6" r="3" fill="#FFFFFF" />
+    <circle cx="42" cy="6" r="3" fill="#FFFFFF" />
+  </g>
+</svg>

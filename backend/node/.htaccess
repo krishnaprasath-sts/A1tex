@@ -1,0 +1,27 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # ── 1. Force HTTPS ──────────────────────────────────────────────────────────
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # ── 2. Allow ACME challenge / SSL cert renewal ──────────────────────────────
+  RewriteRule ^\.well-known(?:/(.*)|$) - [L]
+
+  # ── 3. Reverse Proxy to Node.js API (running on port 5005) ──────────────────
+  RewriteRule ^$ http://127.0.0.1:5005/ [P,L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^(.*)$ http://127.0.0.1:5005/$1 [P,L]
+</IfModule>
+
+# ── 4. Proxy Headers ──────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+  RequestHeader set X-Forwarded-Proto "https" env=HTTPS
+  RequestHeader set X-Forwarded-Port "443" env=HTTPS
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes

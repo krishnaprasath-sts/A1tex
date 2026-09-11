@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Color Palette ─────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #f8fafc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --gold: #fcb900;
+  --gold-soft: #fef3c7;
+  --burgundy: #0284c7;
+  --burgundy-dark: #0369a1;
+  --burgundy-soft: #f0f9ff;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #020617;
+  --panel: #0f172a;
+  --panel-strong: #1e293b;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --line: #334155;
+  --gold: #fcb900;
+  --gold-soft: #fef3c7;
+  --burgundy: #38bdf8;
+  --burgundy-dark: #0284c7;
+  --burgundy-soft: rgba(56, 189, 248, 0.15);
+}
+
+/* ─── Base Resets ───────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* ─── Admin Card ────────────────────────────────────────── */
+
+.admin-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+
+/* ─── Inputs ────────────────────────────────────────────── */
+
+.admin-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--text);
+  outline: none;
+  padding: 0.6rem 0.875rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-input:focus {
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 3px var(--burgundy-soft);
+}
+
+.admin-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* ─── Table Row Hover ───────────────────────────────────── */
+
+.admin-table-row {
+  background-color: transparent;
+}
+
+/* ─── Status Badges ─────────────────────────────────────── */
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+}
+
+.admin-badge-success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.admin-badge-warning {
+  background: #fff8e1;
+  color: #e65100;
+}
+
+.admin-badge-muted {
+  background: #f0efec;
+  color: #78706b;
+}
+
+.admin-badge-info {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.dark .admin-badge-success {
+  background: rgba(46, 125, 50, 0.18);
+  color: #81c784;
+}
+
+.dark .admin-badge-warning {
+  background: rgba(230, 81, 0, 0.18);
+  color: #ffb74d;
+}
+
+.dark .admin-badge-muted {
+  background: rgba(120, 112, 107, 0.15);
+  color: #bcaaa4;
+}
+
+.dark .admin-badge-info {
+  background: rgba(21, 101, 192, 0.18);
+  color: #90caf9;
+}
+
+/* ─── Toast Animation ───────────────────────────────────── */
+
+.admin-toast {
+  animation: admin-toast-in 0.3s ease-out;
+}
+
+@keyframes admin-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Skeleton Pulse ────────────────────────────────────── */
+
+@keyframes admin-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.admin-skeleton {
+  animation: admin-pulse 1.5s ease-in-out infinite;
+  background: var(--line);
+  border-radius: 4px;
+}

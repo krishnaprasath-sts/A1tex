@@ -1,0 +1,39 @@
+{
+  "name": "a1tex",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "dev:api": "npm --prefix backend/node run dev",
+    "dev:admin": "npm --prefix backend/panel run dev",
+    "db:migrate": "npm --prefix backend/node run db:migrate",
+    "db:seed": "npm --prefix backend/node run db:seed",
+    "build": "next build",
+    "start": "next start",
+    "test": "npx tsx --test \"tests/unit/**/*.test.ts\"",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.383.0",
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/three": "^0.184.1",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.3",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "@next/swc-win32-x64-msvc": "^16.2.12"
+  }
+}
