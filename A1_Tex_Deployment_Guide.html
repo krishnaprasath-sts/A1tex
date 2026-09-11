@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A1 TEX - Complete Production Deployment Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #9e1c3f;
+      --primary-dark: #7a122e;
+      --primary-light: #fff1f4;
+      --gold: #d4af37;
+      --gold-light: #fdf8eb;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --success: #059669;
+      --success-light: #ecfdf5;
+      --warning: #d97706;
+      --warning-light: #fffbeb;
+      --border-radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f8fafc;
+      color: var(--slate-800);
+      line-height: 1.65;
+      padding: 2.5rem 1.5rem;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3.5rem 3.5rem;
+      border-radius: 18px;
+      box-shadow: 0 10px 40px -10px rgba(0,0,0,0.07);
+      border: 1px solid var(--slate-200);
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid var(--primary);
+      padding-bottom: 1.8rem;
+      margin-bottom: 2rem;
+    }
+
+    .header-titles h1 {
+      font-size: 2.1rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--primary);
+      text-transform: uppercase;
+    }
+
+    .header-titles p {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      margin-top: 0.3rem;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-container {
+      text-align: right;
+    }
+
+    .badge-status {
+      display: inline-block;
+      background: var(--success);
+      color: white;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      letter-spacing: 0.04em;
+    }
+
+    .header-meta {
+      font-size: 0.85rem;
+      color: var(--slate-600);
+      margin-top: 0.5rem;
+    }
+
+    /* Callout / Note box */
+    .callout {
+      background: var(--gold-light);
+      border-left: 4px solid var(--gold);
+      padding: 1.1rem 1.4rem;
+      border-radius: 8px;
+      margin-bottom: 2.2rem;
+      font-size: 0.95rem;
+      color: #78350f;
+    }
+
+    .callout strong {
+      color: #92400e;
+    }
+
+    /* Section Headings */
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      margin-top: 2.5rem;
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      border-left: 4px solid var(--primary);
+      padding-left: 0.75rem;
+    }
+
+    .section-title span.num {
+      color: var(--primary);
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2rem 0 2rem 0;
+      font-size: 0.92rem;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--slate-200);
+    }
+
+    thead {
+      background: var(--slate-900);
+      color: #ffffff;
+    }
+
+    th {
+      padding: 0.9rem 1.1rem;
+      font-weight: 700;
+      text-align: left;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      padding: 0.95rem 1.1rem;
+      border-bottom: 1px solid var(--slate-200);
+      vertical-align: top;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: var(--slate-50);
+    }
+
+    tbody tr:hover {
+      background-color: var(--primary-light);
+    }
+
+    .comp-name {
+      font-weight: 700;
+      color: var(--slate-900);
+    }
+
+    .platform-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      background: var(--slate-100);
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--slate-700);
+    }
+
+    /* Ordered lists & Steps */
+    ol.steps-list {
+      padding-left: 1.3rem;
+      margin-bottom: 1.8rem;
+    }
+
+    ol.steps-list > li {
+      margin-bottom: 1rem;
+      font-size: 0.96rem;
+      color: var(--slate-700);
+    }
+
+    ul.sub-steps {
+      list-style-type: square;
+      padding-left: 1.5rem;
+      margin-top: 0.45rem;
+    }
+
+    ul.sub-steps li {
+      margin-bottom: 0.4rem;
+      color: var(--slate-600);
+    }
+
+    /* Code Blocks */
+    .code-container {
+      position: relative;
+      margin: 1rem 0 1.5rem 0;
+      background: #0f172a;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+
+    .code-header {
+      background: #1e293b;
+      padding: 0.45rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      border-bottom: 1px solid #334155;
+    }
+
+    .copy-btn {
+      background: #334155;
+      color: #f1f5f9;
+      border: none;
+      border-radius: 4px;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary);
+    }
+
+    pre {
+      padding: 1rem 1.2rem;
+      color: #e2e8f0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.55;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .inline-code {
+      background: var(--slate-100);
+      color: var(--primary);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.88em;
+      border: 1px solid var(--slate-200);
+    }
+
+    /* Key-Value Settings */
+    .config-box {
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      padding: 1.2rem;
+      margin: 0.8rem 0 1.2rem 0;
+    }
+
+    .config-row {
+      display: flex;
+      margin-bottom: 0.5rem;
+      font-size: 0.92rem;
+    }
+
+    .config-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .config-key {
+      font-weight: 700;
+      width: 170px;
+      color: var(--slate-700);
+    }
+
+    .config-val {
+      color: var(--slate-900);
+      flex: 1;
+    }
+
+    .important-tag {
+      color: #b91c1c;
+      font-weight: 700;
+      font-size: 0.82rem;
+      margin-left: 0.4rem;
+    }
+
+    /* Alert Banner */
+    .info-banner {
+      background: var(--success-light);
+      border: 1px solid #a7f3d0;
+      border-radius: 8px;
+      padding: 0.9rem 1.2rem;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+      color: #065f46;
+    }
+
+    .warning-banner {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 0.9rem 1.2rem;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+      color: #991b1b;
+    }
+
+    /* Print styles */
+    @media print {
+      body {
+        padding: 0;
+        background: #fff;
+      }
+      .container {
+        box-shadow: none;
+        border: none;
+        padding: 1rem;
+        max-width: 100%;
+      }
+      .copy-btn {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-titles">
+      <h1>A1 TEX</h1>
+      <p>COMPLETE PRODUCTION DEPLOYMENT GUIDE</p>
+    </div>
+    <div class="badge-container">
+      <span class="badge-status">100% VERIFIED PRODUCTION READY</span>
+      <div class="header-meta">Date: September 2026 | Version 2.0</div>
+    </div>
+  </div>
+
+  <!-- Intro Note -->
+  <div class="callout">
+    <strong>Note for Beginners:</strong> Intha guide Vercel, Render, and Cloud Database pathi 0% knowledge irunthalum click-by-click easy-a follow panna koodiya step-by-step manual. Follow every step in exact order.
+  </div>
+
+  <!-- 1. Architecture Overview -->
+  <h2 class="section-title"><span class="num">1.</span> Overall Architecture Overview (Idhai Mudhalla Purinjikonga)</h2>
+  <p>Namma <strong>A1 Tex</strong> project-la motham 4 interconnected components irukku:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Tech Stack</th>
+        <th>Hosting Platform</th>
+        <th>Enna Vela Seiyudhu?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="comp-name">1. Database</td>
+        <td>MySQL 8.0 / TiDB</td>
+        <td><span class="platform-badge">TiDB Cloud (AWS)</span></td>
+        <td>Products, silk sarees, categories, orders, customers 24/7 cloud-la save aagum. Free Serverless plan.</td>
+      </tr>
+      <tr>
+        <td class="comp-name">2. Backend API</td>
+        <td>Node.js Express + TS</td>
+        <td><span class="platform-badge">Render.com</span></td>
+        <td>Core server engine. Database kooda SSL encryption-la connect aagi APIs & invoice PDF provide pannum.</td>
+      </tr>
+      <tr>
+        <td class="comp-name">3. Admin Panel</td>
+        <td>Vite + React SPA</td>
+        <td><span class="platform-badge">Vercel</span></td>
+        <td>Store owner / admin login panni sarees, orders, price drops, coupons update panna koodiya dashboard.</td>
+      </tr>
+      <tr>
+        <td class="comp-name">4. Storefront</td>
+        <td>Next.js 14</td>
+        <td><span class="platform-badge">Vercel</span></td>
+        <td>Public customers sarees choose panni cart-la add panni online-la order book panna koodiya main e-commerce website.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 2. Prerequisites -->
+  <h2 class="section-title"><span class="num">2.</span> Thevaiyaana Accounts (Pre-requisites)</h2>
+  <ul style="padding-left: 1.3rem; margin-bottom: 2rem; font-size: 0.95rem; color: var(--slate-700);">
+    <li style="margin-bottom: 0.6rem;">
+      <strong>GitHub Account:</strong> Repository URL: <a href="https://github.com/krishnaprasath-sts/A1tex" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: 600;">https://github.com/krishnaprasath-sts/A1tex</a> (Clean code already pushed to branch <code>main</code>).
+    </li>
+    <li>
+      <strong>Google Account:</strong> TiDB Cloud, Render, and Vercel-la 1-click login panna.
+    </li>
+  </ul>
+
+  <!-- 3. STEP 1: TiDB Cloud Database -->
+  <h2 class="section-title"><span class="num">3.</span> STEP 1 — Cloud Database Setup (TiDB Cloud)</h2>
+  <p style="margin-bottom: 1rem; color: var(--slate-600); font-size: 0.95rem;">
+    TiDB Cloud is a <strong>100% Free Serverless MySQL database</strong> hosted on AWS. No credit card required.
+  </p>
+
+  <ol class="steps-list">
+    <li>Browser-la <a href="https://tidbcloud.com" target="_blank" style="color: var(--primary); font-weight: 600;">https://tidbcloud.com</a> poyi <strong>"Sign in with Google"</strong> kudunga.</li>
+    <li><strong>"Create Project"</strong> click panni, plan-la 👉 <strong>Serverless (Free - $0)</strong> select pannunga.</li>
+    <li>Cluster name <strong>A1tex</strong> nu vachitu <strong>Create</strong> click pannunga (10 seconds-la cluster ready aagidum).</li>
+    <li>Screen-la oru <strong>Password</strong> kaattum (e.g. <code>YourTiDBPassword123</code>). Adha udane Notepad-la copy panni save pannikonga (oru thadava close aana marubadiyum kaattaadhu).</li>
+    <li>
+      <strong>Public IP Firewall Allow Panna (Romba Crucial):</strong>
+      <ul class="sub-steps">
+        <li>Popup-a close pannitu, left menu <strong>Settings (⚙️)</strong> → <strong>Security</strong> ponga.</li>
+        <li>IP Access List-la <strong>Add Rule</strong> click panni:</li>
+        <li>Rule Name: <span class="inline-code">Allow_all_public_connections</span></li>
+        <li>Start IP: <span class="inline-code">0.0.0.0</span> | End IP: <span class="inline-code">255.255.255.255</span></li>
+        <li><strong>Submit</strong> click pannunga. (Idhanaala Render cloud backend block aagama connect aagum).</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Database Create & Test Panna:</strong> Local terminal-la intha one-line run panna TiDB-la <span class="inline-code">a1tex_db</span> schema ready aagidum:
+      <div class="code-container">
+        <div class="code-header">
+          <span>POWERSHELL / TERMINAL</span>
+          <button class="copy-btn" onclick="copyCode('db-cmd')">Copy Command</button>
+        </div>
+        <pre id="db-cmd">cd "d:\Sai Tech\tn\backend\node"; node scripts/init-cloud-db.cjs gateway01.ap-northeast-1.prod.aws.tidbcloud.com 4000 &lt;YOUR_TIDB_USER&gt; &lt;YOUR_TIDB_PASSWORD&gt; a1tex_db</pre>
+      </div>
+      <p style="font-size: 0.9rem; color: var(--slate-600); margin-top: -0.8rem; margin-bottom: 1rem;">
+        <em>(Replace <code>gateway01...</code>, <code>&lt;YOUR_TIDB_USER&gt;</code>, and <code>&lt;YOUR_TIDB_PASSWORD&gt;</code> with your TiDB dashboard details).</em>
+      </p>
+    </li>
+  </ol>
+
+  <!-- 4. STEP 2: Render Backend API -->
+  <h2 class="section-title"><span class="num">4.</span> STEP 2 — Backend API Deployment (Render.com)</h2>
+  <p style="margin-bottom: 1rem; color: var(--slate-600); font-size: 0.95rem;">
+    Render Node.js Express server-a 24/7 continuous-a internet-la run pannum.
+  </p>
+
+  <ol class="steps-list">
+    <li><a href="https://render.com" target="_blank" style="color: var(--primary); font-weight: 600;">https://render.com</a> poyi <strong>"Sign in with GitHub"</strong> click pannunga.</li>
+    <li>Top menu-la <strong>"New +"</strong> → <strong>"Web Service"</strong> click pannunga.</li>
+    <li>Unga <strong>krishnaprasath-sts/A1tex</strong> repository-a select panni <strong>"Connect"</strong> kudunga.</li>
+    <li>Form-la intha settings-a exact-a kudunga:
+      <div class="config-box">
+        <div class="config-row"><span class="config-key">Name:</span><span class="config-val"><strong>a1tex-backend</strong></span></div>
+        <div class="config-row"><span class="config-key">Root Directory:</span><span class="config-val">👉 <strong>backend/node</strong> <span class="important-tag">(Romba mukkiyam!)</span></span></div>
+        <div class="config-row"><span class="config-key">Runtime:</span><span class="config-val"><strong>Node</strong></span></div>
+        <div class="config-row"><span class="config-key">Build Command:</span><span class="config-val"><code>npm install && npm run build</code></span></div>
+        <div class="config-row"><span class="config-key">Start Command:</span><span class="config-val"><code>npm run start</code></span></div>
+        <div class="config-row"><span class="config-key">Instance Type:</span><span class="config-val"><strong>Free</strong></span></div>
+      </div>
+    </li>
+    <li>
+      Keela scroll panni <strong>"Add from .env"</strong> or <strong>"Environment Variables"</strong> click panni intha full text-a paste pannunga:
+      <div class="code-container">
+        <div class="code-header">
+          <span>RENDER ENVIRONMENT VARIABLES (.ENV)</span>
+          <button class="copy-btn" onclick="copyCode('render-env')">Copy Text</button>
+        </div>
+        <pre id="render-env">NODE_ENV=production
+PORT=5000
+CORS_ORIGIN=*
+
+# TiDB Cloud Database Credentials
+DB_HOST=gateway01.ap-northeast-1.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=your_tidb_username.root
+DB_PASSWORD=your_tidb_password_here
+DB_NAME=a1tex_db
+DB_SSL=true
+
+# Application URLs (Update with your actual Vercel domains after Step 3 &amp; 4)
+FRONTEND_URL=https://a1tex-storefront.vercel.app
+API_URL=https://a1tex-backend.onrender.com
+ADMIN_PANEL_URL=https://a1tex-panel.vercel.app
+
+# Security &amp; JWT Keys
+JWT_ACCESS_SECRET=a1tex_jwt_super_secret_access_token_key_2026_secure
+JWT_REFRESH_SECRET=a1tex_jwt_super_secret_refresh_token_key_2026_secure
+COOKIE_SECRET=a1tex_cookie_secret_key_production_2026_secure
+SERVICE_API_SECRET=a1tex_service_secret_secure_1928347_key
+ORDER_SERVICE_SECRET=a1tex_order_secret_secure_1239847_key
+
+# Admin Defaults
+ADMIN_EMAIL=admin@a1tex.com
+ADMIN_PASSWORD=A1texAdmin@2026
+
+# Email / SMTP
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=krishnakrishna86524@gmail.com
+EMAIL_PASS=vwgvwdmmupiqnise
+
+# Payment Gateway (Razorpay Live)
+RAZORPAY_KEY_ID=rzp_live_STuDu2e4heG9dX
+RAZORPAY_KEY_SECRET=PDWUo8pDXvrCzJrGoJLpMsNe
+
+# Shipping
+FALLBACK_SHIPPING_RATE=0
+FALLBACK_SHIPPING_DAYS=5</pre>
+      </div>
+    </li>
+    <li><strong>"Deploy Web Service"</strong> click pannunga.</li>
+    <li>Build mudinjathum: <code>==> Your service is live 🎉</code> nu varum.</li>
+    <li>Top left-la kedaikkura link: 👉 <span class="inline-code">https://a1tex-backend.onrender.com</span></li>
+  </ol>
+
+  <div class="info-banner">
+    <strong>Render Free Tier Note:</strong> 15 minutes traffic illana server sleep mode-ku pogum. First request varumpothu 30-40 seconds wake up time edukkum. Adhukapram super fast-a irukkum.
+  </div>
+
+  <!-- 5. STEP 3: Admin Panel Vercel -->
+  <h2 class="section-title"><span class="num">5.</span> STEP 3 — Admin Panel Deployment (Vercel)</h2>
+  <p style="margin-bottom: 1rem; color: var(--slate-600); font-size: 0.95rem;">
+    Vite + React-la build aana single-page admin application.
+  </p>
+
+  <ol class="steps-list">
+    <li><a href="https://vercel.com" target="_blank" style="color: var(--primary); font-weight: 600;">https://vercel.com</a> poyi GitHub account-la login pannunga.</li>
+    <li><strong>"Add New..."</strong> → <strong>"Project"</strong> click panni <strong>krishnaprasath-sts/A1tex</strong> repo-va <strong>Import</strong> pannunga.</li>
+    <li>Settings-la:
+      <div class="config-box">
+        <div class="config-row"><span class="config-key">Project Name:</span><span class="config-val"><strong>a1tex-panel</strong></span></div>
+        <div class="config-row"><span class="config-key">Framework Preset:</span><span class="config-val">👉 <strong>Vite</strong> <span class="important-tag">(Next.js kidayathu!)</span></span></div>
+        <div class="config-row"><span class="config-key">Root Directory:</span><span class="config-val">👉 <strong>backend/panel</strong></span></div>
+      </div>
+    </li>
+    <li>Environment Variables-la:
+      <div class="code-container">
+        <div class="code-header">
+          <span>ADMIN PANEL ENV VARIABLES</span>
+          <button class="copy-btn" onclick="copyCode('panel-env')">Copy</button>
+        </div>
+        <pre id="panel-env">VITE_API_BASE_URL=https://a1tex-backend.onrender.com/api
+VITE_STOREFRONT_URL=https://a1tex-storefront.vercel.app</pre>
+      </div>
+    </li>
+    <li><strong>"Deploy"</strong> click pannunga!</li>
+    <li>Live Domain: 👉 <span class="inline-code">https://a1tex-panel.vercel.app</span></li>
+    <li>
+      <strong>Admin Login Credentials:</strong>
+      <div class="config-box" style="margin-top: 0.5rem;">
+        <div class="config-row"><span class="config-key">Email:</span><span class="config-val"><strong>admin@a1tex.com</strong></span></div>
+        <div class="config-row"><span class="config-key">Password:</span><span class="config-val"><strong>A1texAdmin@2026</strong></span></div>
+      </div>
+    </li>
+  </ol>
+
+  <!-- 6. STEP 4: Storefront Vercel -->
+  <h2 class="section-title"><span class="num">6.</span> STEP 4 — Customer Website / Storefront (Vercel)</h2>
+  <ol class="steps-list">
+    <li>Vercel-la marubadiyum <strong>"Add New..."</strong> → <strong>"Project"</strong> click panni <strong>krishnaprasath-sts/A1tex</strong> repo-va <strong>Import</strong> pannunga.</li>
+    <li>Settings-la:
+      <div class="config-box">
+        <div class="config-row"><span class="config-key">Project Name:</span><span class="config-val"><strong>a1tex-storefront</strong></span></div>
+        <div class="config-row"><span class="config-key">Framework Preset:</span><span class="config-val">👉 <strong>Next.js</strong></span></div>
+        <div class="config-row"><span class="config-key">Root Directory:</span><span class="config-val">👉 <strong>frontend</strong></span></div>
+      </div>
+    </li>
+    <li>Environment Variables-la:
+      <div class="code-container">
+        <div class="code-header">
+          <span>STOREFRONT ENV VARIABLES</span>
+          <button class="copy-btn" onclick="copyCode('frontend-env')">Copy</button>
+        </div>
+        <pre id="frontend-env">NEXT_PUBLIC_API_BASE_URL=https://a1tex-backend.onrender.com/api
+BACKEND_URL=https://a1tex-backend.onrender.com
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_STuDu2e4heG9dX</pre>
+      </div>
+    </li>
+    <li><strong>"Deploy"</strong> click pannunga! Next.js production build complete aagi website live aagidum.</li>
+    <li>Live Domain: 👉 <span class="inline-code">https://a1tex-storefront.vercel.app</span></li>
+  </ol>
+
+  <!-- 7. Common Pitfalls -->
+  <h2 class="section-title"><span class="num">7.</span> Common Pitfalls & Solutions (Munnadi Vantha Errors & Fixes)</h2>
+  
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 22%;">Issue Encountered</th>
+        <th style="width: 38%;">Root Cause</th>
+        <th style="width: 40%;">Permanent Solution</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Root directory "node" does not exist</strong></td>
+        <td>Root Directory path was typed as <code>node</code> instead of <code>backend/node</code>.</td>
+        <td>Always configure Root Directory as <span class="inline-code">backend/node</span> on Render.</td>
+      </tr>
+      <tr>
+        <td><strong>TiDB Cloud Handshake Timeout / SSL Error</strong></td>
+        <td>TiDB Cloud requires TLSv1.2 SSL encryption on port 4000.</td>
+        <td>Code already updated with automatic <code>isCloudDb</code> detection and TLS v1.2 SSL in <span class="inline-code">sequelize.ts</span>.</td>
+      </tr>
+      <tr>
+        <td><strong>Unknown database 'a1tex_db'</strong></td>
+        <td>TiDB cluster was fresh and didn't have the database schema created.</td>
+        <td>Run <span class="inline-code">node scripts/init-cloud-db.cjs</span> once locally, or create <span class="inline-code">a1tex_db</span> in TiDB Cloud web console.</td>
+      </tr>
+      <tr>
+        <td><strong>CORS blocked / Missing Header</strong></td>
+        <td>Vercel frontends have dynamic domains (*.vercel.app).</td>
+        <td>Configured CORS in <span class="inline-code">app.ts</span> to automatically allow all <span class="inline-code">.vercel.app</span> domains and <span class="inline-code">CORS_ORIGIN=*</span>.</td>
+      </tr>
+      <tr>
+        <td><strong>Admin panel 404 NOT_FOUND on page refresh</strong></td>
+        <td>Vercel couldn't resolve direct client-side routes (<code>/login</code>, <code>/orders</code>) in Vite SPA.</td>
+        <td>Added <span class="inline-code">backend/panel/vercel.json</span> with SPA rewrite rule <span class="inline-code">{"source":"/(.*)","destination":"/index.html"}</span>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Health Check -->
+  <div class="info-banner" style="background: #eff6ff; border-color: #bfdbfe; color: #1e40af;">
+    <strong>Production Health Check:</strong> Backend live-a irukka-nu eppo venalum check panna: <br>
+    <a href="https://a1tex-backend.onrender.com/api/health" target="_blank" style="color: #2563eb; font-weight: 600;">https://a1tex-backend.onrender.com/api/health</a> visit pannunga. <br>
+    <span class="inline-code">{"ok": true, "service": "a1-tex-api"}</span> nu vantha unga server 100% healthy!
+  </div>
+
+</div>
+
+<script>
+  function copyCode(id) {
+    const text = document.getElementById(id).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      const originalText = btn.innerText;
+      btn.innerText = 'Copied! ✓';
+      btn.style.background = '#059669';
+      setTimeout(() => {
+        btn.innerText = originalText;
+        btn.style.background = '';
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>
