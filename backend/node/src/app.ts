@@ -18,8 +18,13 @@ const allowedOrigins = new Set([
   env.ADMIN_PANEL_URL,
   'https://a1tex.in',
   'https://www.a1tex.in',
+  'https://a1texdashboard.a1tex.in',
+  'https://aitexapi.a1tex.in',
+  'https://a1texapi.a1tex.in',
   'https://a1dashboard.a1tex.in',
-  'https://aiapi.a1tex.in',
+  'https://a1tex.saitechnosolutions.co.in',
+  'https://a1texdashboard.saitechnosolutions.co.in',
+  'https://a1texapi.saitechnosolutions.co.in',
   'http://localhost:3000',
   'http://localhost:5173',
 ])
@@ -45,7 +50,10 @@ app.use(cors({
     if (env.NODE_ENV === 'development') return callback(null, true)
     if (env.CORS_ORIGIN === '*' || process.env.CORS_ORIGIN === '*') return callback(null, true)
     if (!origin || allowedOrigins.has(origin)) return callback(null, true)
+    if (origin.endsWith('.a1tex.in') || origin === 'https://a1tex.in') return callback(null, true)
+    if (origin.endsWith('.saitechnosolutions.co.in') || origin === 'https://saitechnosolutions.co.in') return callback(null, true)
     if (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) return callback(null, true)
+    if (/^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(origin)) return callback(null, true)
     return callback(new Error(`CORS blocked for origin: ${origin}`))
   },
   credentials: true,
@@ -80,17 +88,17 @@ app.use(rateLimit({
 
     const origin = req.headers.origin
     const referer = req.headers.referer
-    if (origin && (origin === env.FRONTEND_URL || origin === env.ADMIN_PANEL_URL)) {
+    if (origin && (origin === env.FRONTEND_URL || origin === env.ADMIN_PANEL_URL || /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(origin))) {
       return true
     }
     if (referer) {
-      if (referer.startsWith(env.FRONTEND_URL) || referer.startsWith(env.ADMIN_PANEL_URL)) {
+      if (referer.startsWith(env.FRONTEND_URL) || referer.startsWith(env.ADMIN_PANEL_URL) || /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(referer)) {
         return true
       }
     }
     
     const ip = req.ip || req.socket.remoteAddress
-    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || (typeof ip === 'string' && (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')))
   },
 }))
 

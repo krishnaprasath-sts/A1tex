@@ -17,6 +17,7 @@ import {
   Coupon,
   CouponUsage,
   CouponCustomer,
+  Customer,
 } from '../../../models/index.js'
 import { sequelize } from '../../../database/sequelize.js'
 import { AppError } from '../../../utils/http.js'
@@ -171,11 +172,49 @@ export const createOrder = async (req: Request, res: Response) => {
     }
   }
 
+  let resolvedCustomerId = auth?.sub ?? null
+  let resolvedCustomerEmail = customerEmail || auth?.email || null
+  const effectiveEmail = (customerEmail || auth?.email || (shippingAddress as any)?.email || '').trim().toLowerCase()
+
+  if (resolvedCustomerId && !resolvedCustomerEmail) {
+    const cust = await Customer.findByPk(resolvedCustomerId)
+    if (cust) {
+      resolvedCustomerEmail = (cust as any).email || null
+    }
+  }
+
+  if (!resolvedCustomerId && effectiveEmail && effectiveEmail.includes('@')) {
+    const existingCustomer = await Customer.findOne({
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), effectiveEmail),
+    })
+    if (existingCustomer) {
+      resolvedCustomerId = (existingCustomer as any).id
+      if (!resolvedCustomerEmail) {
+        resolvedCustomerEmail = (existingCustomer as any).email || null
+      }
+    }
+  }
+
+  if (!resolvedCustomerEmail && effectiveEmail && effectiveEmail.includes('@')) {
+    resolvedCustomerEmail = effectiveEmail
+  }
+
+  const resolvedCustomerName = (
+    [shippingAddress?.firstName, shippingAddress?.lastName].filter(Boolean).join(' ')
+    || auth?.name
+    || (resolvedCustomerEmail ? resolvedCustomerEmail.split('@')[0] : null)
+    || 'Customer'
+  ).trim()
+  const resolvedCustomerMobile = (shippingAddress as any)?.phone || auth?.phone || null
+
   const result = await sequelize.transaction(async (t) => {
     const order = await Order.create({
       orderNumber: generateOrderNumber(),
-      customerId: auth?.sub ?? null,
-      customerEmail: customerEmail ?? auth?.email ?? null,
+      customerId: resolvedCustomerId,
+      customerName: resolvedCustomerName,
+      customerEmail: resolvedCustomerEmail,
+      customerMobile: resolvedCustomerMobile,
+      paymentMethod,
       status: 'pending',
       paymentStatus: 'pending',
       subtotal,
@@ -188,6 +227,7 @@ export const createOrder = async (req: Request, res: Response) => {
         paymentMethod,
         ...(courierName ? { courierName } : {}),
         ...(courierCode ? { courierCode } : {}),
+        ...(resolvedCustomerEmail ? { customerEmail: resolvedCustomerEmail } : {}),
       },
       deliveryAgentName: courierName || null,
     }, { transaction: t })
@@ -297,8 +337,14 @@ function isAbandonedCheckout(order: any): boolean {
 
 export const getOrders = async (req: Request, res: Response) => {
   const auth = (req as any).auth
+  const customerEmail = auth?.email ? String(auth.email).trim().toLowerCase() : null
   const orders = await Order.findAll({
-    where: { customerId: auth.sub },
+    where: {
+      [Op.or]: [
+        { customerId: auth.sub },
+        ...(customerEmail ? [{ customerEmail }] : []),
+      ],
+    },
     include: [{ model: OrderItem, as: 'items' }],
     order: [['createdAt', 'DESC']],
   })
@@ -398,14 +444,14 @@ export const trackOrder = async (req: Request, res: Response) => {
 }
 
 const calculateShippingSchema = z.object({
-  pincode: z.string().min(6).max(10).optional(),
-  state: z.string().max(100).optional(),
+  pincode: z.string().optional().nullable().transform(v => (v && v.trim().length >= 6 ? v.trim() : undefined)),
+  state: z.string().max(100).optional().nullable().transform(v => (v && v.trim() ? v.trim() : undefined)),
   items: z.array(z.object({
     weight: z.coerce.number().min(0).default(0.5),
     quantity: z.coerce.number().int().min(1),
   })).optional(),
   cod: z.boolean().default(false),
-  subtotal: z.number().min(0).optional(),
+  subtotal: z.coerce.number().min(0).optional(),
 })
 
 export const calculateShipping = async (req: Request, res: Response) => {
@@ -674,7 +720,7 @@ const createRazorpayOrderSchema = z.object({
     total: z.coerce.number().min(0),
   })).min(1),
   customerEmail: z.string().email().optional(),
-  paymentMethod: z.enum(['upi', 'card', 'netbanking', 'cod']),
+  paymentMethod: z.enum(['upi', 'card', 'netbanking', 'online']),
   shippingAddress: z.object({
     firstName: z.string().min(1),
     lastName: z.string().optional(),
@@ -885,25 +931,57 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
   const orderNumber = generateOrderNumber()
 
   // Online payments in India require at least ₹1.00 (Razorpay minimum threshold)
-  if (paymentMethod !== 'cod' && grandTotal < 1) {
+  if (grandTotal < 1) {
     throw new AppError(400, 'Order amount must be at least ₹1.00 for online payments.')
   }
 
-  // COD orders skip the payment gateway entirely — they go straight to pending_payment
-  // and are confirmed via the /confirm-cod endpoint (customer) or admin panel.
+  // Online payment is mandatory for all orders — COD is not supported
   let razorpayOrder: any
-  if (paymentMethod !== 'cod') {
-    try {
-      razorpayOrder = await razorpayCreateOrder({
-        amount: grandTotal,
-        receipt: orderNumber,
-        notes: { orderNumber, paymentMethod, ...(couponCodeSaved ? { couponCode: couponCodeSaved } : {}) },
-      })
-    } catch (err: any) {
-      const gatewayMsg = err?.error?.description || err?.message || 'Payment gateway failed to initialize order'
-      throw new AppError(502, `Payment gateway error: ${gatewayMsg}`)
+  try {
+    razorpayOrder = await razorpayCreateOrder({
+      amount: grandTotal,
+      receipt: orderNumber,
+      notes: { orderNumber, paymentMethod, ...(couponCodeSaved ? { couponCode: couponCodeSaved } : {}) },
+    })
+  } catch (err: any) {
+    const gatewayMsg = err?.error?.description || err?.message || 'Payment gateway failed to initialize order'
+    throw new AppError(502, `Payment gateway error: ${gatewayMsg}`)
+  }
+
+  let resolvedCustomerId = auth?.sub ?? null
+  let resolvedCustomerEmail = customerEmail || auth?.email || null
+  const effectiveEmail = (customerEmail || auth?.email || (shippingAddress as any)?.email || '').trim().toLowerCase()
+
+  if (resolvedCustomerId && !resolvedCustomerEmail) {
+    const cust = await Customer.findByPk(resolvedCustomerId)
+    if (cust) {
+      resolvedCustomerEmail = (cust as any).email || null
     }
   }
+
+  if (!resolvedCustomerId && effectiveEmail && effectiveEmail.includes('@')) {
+    const existingCustomer = await Customer.findOne({
+      where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), effectiveEmail),
+    })
+    if (existingCustomer) {
+      resolvedCustomerId = (existingCustomer as any).id
+      if (!resolvedCustomerEmail) {
+        resolvedCustomerEmail = (existingCustomer as any).email || null
+      }
+    }
+  }
+
+  if (!resolvedCustomerEmail && effectiveEmail && effectiveEmail.includes('@')) {
+    resolvedCustomerEmail = effectiveEmail
+  }
+
+  const resolvedCustomerName = (
+    [shippingAddress?.firstName, shippingAddress?.lastName].filter(Boolean).join(' ')
+    || auth?.name
+    || (resolvedCustomerEmail ? resolvedCustomerEmail.split('@')[0] : null)
+    || 'Customer'
+  ).trim()
+  const resolvedCustomerMobile = (shippingAddress as any)?.phone || auth?.phone || null
 
   // Step 1: always create the order as 'pending_payment' first, on its own —
   // this is the abandoned-checkout checkpoint for BOTH payment methods. If
@@ -913,10 +991,13 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
   const draftResult = await sequelize.transaction(async (t) => {
     const order = await Order.create({
       orderNumber,
-      customerId: auth?.sub ?? null,
-      customerEmail: customerEmail ?? auth?.email ?? null,
+      customerId: resolvedCustomerId,
+      customerName: resolvedCustomerName,
+      customerEmail: resolvedCustomerEmail,
+      customerMobile: resolvedCustomerMobile,
       status: 'pending_payment',
       paymentStatus: 'pending',
+      paymentMethod,
       subtotal,
       shippingTotal: effectiveShippingTotal,
       grandTotal,
@@ -933,6 +1014,7 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
         ...(courierCode ? { courierCode } : {}),
         ...(razorpayOrder ? { razorpayOrderId: razorpayOrder.id } : {}),
         ...(welcomeDiscountApplied ? { welcomeDiscountApplied: true } : {}),
+        ...(resolvedCustomerEmail ? { customerEmail: resolvedCustomerEmail } : {}),
       },
     }, { transaction: t })
 
@@ -966,6 +1048,7 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
   const guestToken = !auth ? computeGuestToken(orderIdNum) : undefined
 
   res.status(201).json({
+    keyId: env.RAZORPAY_KEY_ID,
     razorpayOrderId: razorpayOrder?.id ?? null,
     amount: razorpayOrder?.amount ?? 0,
     currency: razorpayOrder?.currency ?? 'INR',
@@ -1030,7 +1113,12 @@ export const verifyPayment = async (req: Request, res: Response) => {
     return res.json({ order: plain<any>(existingOrder), guestToken })
   }
 
-  await processPaidOrder(orderId, { razorpayPaymentId, razorpaySignature })
+  try {
+    await processPaidOrder(orderId, { razorpayPaymentId, razorpaySignature })
+  } catch (procErr: any) {
+    console.error(`[verifyPayment] processPaidOrder failed for order ${orderId}:`, procErr?.message, procErr?.parent?.sqlMessage || '', procErr?.name || '')
+    throw procErr
+  }
 
   const auth = (req as any).auth
   const updatedOrder = plain<any>(await Order.findByPk(orderId, {
@@ -1165,9 +1253,9 @@ export async function processPaidOrder(orderId: number, details: PaymentDetails)
   }
 
   // Async: create invoice + confirmation emails (fire and forget)
-  // Re-fetch with items to ensure email shows full item breakdown
+  // Re-fetch with items and customer to ensure email shows full item breakdown
   const updatedOrder = plain<any>(await Order.findByPk(orderId, {
-    include: [{ model: OrderItem, as: 'items' }],
+    include: [{ model: OrderItem, as: 'items' }, { model: Customer }],
   }))
   const adminEmail = env.ADMIN_EMAIL
   const orderNumber = updatedOrder.orderNumber
@@ -1177,6 +1265,7 @@ export async function processPaidOrder(orderId: number, details: PaymentDetails)
   ]).then(([, company]) => {
     const customerEmailTo = (
       (updatedOrder.customerEmail as string)
+      || ((updatedOrder.Customer as any)?.email as string)
       || ((updatedOrder.shippingAddress as any)?.email as string)
       || ((updatedOrder.metadata as any)?.customerEmail as string)
       || ''
@@ -1196,126 +1285,6 @@ const confirmCodSchema = z.object({
   guestToken: z.string().optional(),
 })
 
-export const confirmCodOrder = async (req: Request, res: Response) => {
-  const { id } = req.params
-  const orderId = Number(id)
-  if (!orderId) throw new AppError(400, 'Invalid order ID.')
-
-  const auth = ((req as any).auth || (req as any).customerAuth) as { sub?: number; email?: string } | undefined
-
-  const order = await Order.findByPk(orderId, {
-    include: [{ model: OrderItem, as: 'items' }],
-  })
-  if (!order) throw new AppError(404, 'Order not found.')
-
-  const plainOrder = plain<any>(order)
-
-  // Verify ownership: either authenticated customer or valid guest token
-  if (auth?.sub) {
-    if (plainOrder.customerId && plainOrder.customerId !== auth.sub) {
-      throw new AppError(403, 'Access denied.')
-    }
-  } else {
-    const body = confirmCodSchema.parse(req.body)
-    if (!body.guestToken) throw new AppError(401, 'Authentication required.')
-    const expectedToken = computeGuestToken(orderId)
-    if (body.guestToken !== expectedToken) throw new AppError(403, 'Invalid guest token.')
-  }
-
-  // Must be a pending_payment COD order
-  if (plainOrder.status !== 'pending_payment') {
-    throw new AppError(400, 'This order cannot be confirmed.')
-  }
-  const paymentMethod = plainOrder.metadata?.paymentMethod
-  if (paymentMethod !== 'cod') {
-    throw new AppError(400, 'This is not a COD order.')
-  }
-
-  const couponId = plainOrder.couponId
-  const discountAmount = Number(plainOrder.discount || 0)
-
-  // Deduct stock + apply coupon in a transaction
-  const orderItems = await OrderItem.findAll({ where: { orderId } })
-  await sequelize.transaction(async (t) => {
-    for (const item of orderItems) {
-      const itemPlain = plain<any>(item)
-      if (itemPlain.variantId) {
-        const v = await ProductVariant.findOne({
-          where: { id: itemPlain.variantId },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        })
-        if (v) {
-          const currentStock = (v as any).stockQty ?? 0
-          if (currentStock < itemPlain.quantity) {
-            throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
-          }
-          await v.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
-        }
-      } else if (itemPlain.productId) {
-        const p = await Product.findOne({
-          where: { id: itemPlain.productId },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        })
-        if (p) {
-          const currentStock = (p as any).stockQty ?? 0
-          if (currentStock < itemPlain.quantity) {
-            throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
-          }
-          await p.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
-        }
-      }
-    }
-
-    if (couponId) {
-      const existing = await CouponUsage.findOne({ where: { orderId } })
-      if (!existing) {
-        await CouponUsage.create({
-          couponId,
-          orderId,
-          customerId: plainOrder.customerId ?? null,
-          customerEmail: plainOrder.customerEmail ?? null,
-          discountAmount,
-        }, { transaction: t })
-        await Coupon.increment('usedCount', { by: 1, where: { id: couponId }, transaction: t })
-      }
-    }
-
-    await order.update({
-      status: 'pending',
-      metadata: {
-        ...(plainOrder.metadata || {}),
-        codConfirmedAt: new Date().toISOString(),
-      },
-    }, { transaction: t })
-  })
-
-  // Async: create invoice + confirmation emails
-  const updatedOrder = plain<any>(await Order.findByPk(orderId, {
-    include: [{ model: OrderItem, as: 'items' }],
-  }))
-  const adminEmail = env.ADMIN_EMAIL
-  const orderNumber = updatedOrder.orderNumber
-  Promise.all([
-    createInvoiceForOrder(orderId, { sendEmail: false }),
-    getCompanyInfo(),
-  ]).then(([, company]) => {
-    const customerEmailTo = (
-      (updatedOrder.customerEmail as string)
-      || ((updatedOrder.shippingAddress as any)?.email as string)
-      || ((updatedOrder.metadata as any)?.customerEmail as string)
-      || ''
-    ).trim()
-    if (customerEmailTo) {
-      emailService.sendOrderConfirmationEmail(customerEmailTo, updatedOrder, company).catch((err: any) => {
-        console.error(`[Order ${orderNumber}] Customer email failed:`, err.message)
-      })
-    }
-    return emailService.sendAdminOrderNotification(adminEmail, updatedOrder, company)
-  }).catch((err: any) => {
-    console.error(`[Order ${orderNumber}] Post-order notification failed:`, err.message)
-  })
-
-  res.json({ ok: true, status: 'pending', message: 'COD order confirmed.' })
+export const confirmCodOrder = async (_req: Request, _res: Response) => {
+  throw new AppError(400, 'Cash on Delivery (COD) is not supported. Orders can only be placed and confirmed with verified online payment.')
 }

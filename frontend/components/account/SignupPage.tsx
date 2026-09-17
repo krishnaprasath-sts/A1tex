@@ -37,16 +37,6 @@ function validateSignup(fields: SignupFields) {
     errors.password = 'Password is required.'
   } else if (fields.password.length < 6) {
     errors.password = 'Password must be at least 6 characters.'
-  } else if (/\s/.test(fields.password)) {
-    errors.password = 'Password cannot contain spaces.'
-  } else if (!/[A-Z]/.test(fields.password)) {
-    errors.password = 'Password must contain at least one uppercase letter.'
-  } else if (!/[a-z]/.test(fields.password)) {
-    errors.password = 'Password must contain at least one lowercase letter.'
-  } else if (!/\d/.test(fields.password)) {
-    errors.password = 'Password must contain at least one digit.'
-  } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(fields.password)) {
-    errors.password = 'Password must contain at least one special character.'
   }
   if (!fields.confirmPassword) errors.confirmPassword = 'Confirm your password.'
   if (fields.password && fields.confirmPassword && fields.password !== fields.confirmPassword) errors.confirmPassword = 'Passwords do not match.'
@@ -60,7 +50,7 @@ function validateSignup(fields: SignupFields) {
 }
 
 function FieldError({ message }: { message?: string }) {
-  return message ? <p className="mt-1 text-xs font-medium text-[#A34336]">{message}</p> : null
+  return message ? <p className="mt-1 text-xs font-medium text-[#8B1A1A]">{message}</p> : null
 }
 
 export default function SignupPage() {
@@ -214,19 +204,19 @@ export default function SignupPage() {
                     Password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A34336]" />
+                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8B1A1A]" />
                     <input
                       id="signup-password"
                       type={showPassword ? 'text' : 'password'}
                       value={fields.password}
                       onChange={event => updateField('password', event.target.value)}
-                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-11 text-sm outline-none transition focus:border-[#A34336] focus:bg-white"
-                      placeholder="Min 6 chars, uppercase, lowercase, number & special char"
+                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-11 text-sm outline-none transition focus:border-[#8B1A1A] focus:bg-white"
+                      placeholder="Minimum 6 characters"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#666666] hover:text-[#A34336] transition-colors"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#666666] hover:text-[#8B1A1A] transition-colors"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -268,28 +258,27 @@ export default function SignupPage() {
                     type="checkbox"
                     checked={fields.terms}
                     onChange={event => updateField('terms', event.target.checked)}
-                    className="mt-1 h-4 w-4 accent-[#A34336]"
+                    className="mt-1 h-4 w-4 accent-[#8B1A1A]"
                   />
                   <span>I agree to receive order updates and accept the A1 TEX account terms. <span className="text-red-500">*</span></span>
                 </label>
                 <FieldError message={errors.terms} />
               </div>
 
-              <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#A34336] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-70">
-                <span className="absolute inset-0 z-0 origin-left scale-x-0 bg-[#8e382b] transition-transform duration-500 group-hover:scale-x-100" />
+              <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#8B1A1A] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition hover:bg-[#721226] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer">
                 <span className="relative z-10 flex items-center gap-2">
                   {submitting ? 'Creating Account...' : 'Create Account'}
                   <Sparkles className="h-4 w-4" />
                 </span>
               </button>
-              {apiError ? <p className="text-center text-sm font-medium text-[#A34336]">{apiError}</p> : null}
+              {apiError ? <p className="text-center text-sm font-medium text-red-600 bg-red-50 p-2.5 rounded border border-red-200">{apiError}</p> : null}
             </form>
 
             <div className="mt-7 flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-5 text-sm text-[#666666] sm:flex-row">
-              <Link href="/account" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+              <Link href="/login" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
                 Already have an account? Sign in
               </Link>
-              <Link href="/cart" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+              <Link href="/cart" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
                 Continue as guest
               </Link>
             </div>

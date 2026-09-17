@@ -26,15 +26,15 @@ export interface GuestDiscountPopupConfig {
 }
 
 const defaultCompany: CompanyInfo = {
-  name: 'A1 TEX',
+  name: 'A1 tex',
   address: 'A1 Tex & elampillai_silks, Elampillai',
   city: 'Salem, Tamil Nadu — 637502',
   gstin: '33ABCDE1234F1Z5',
   pan: 'ABCDE1234F',
   phone: '+91 95144 61405',
   whatsapp: '9514461405',
-  instagram: 'https://www.instagram.com/a1_textiles/?hl=en',
-  email: 'support@a1tex.com',
+  instagram: 'https://www.instagram.com/elampillai_silks?stkn=OGJ3eGRzYmw0OWN1',
+  email: 'a1texelmpillai@gmail.com',
   invoicePrefix: 'INV',
   logoUrl: '/uploads/a1-tex-logo.png',
 }
@@ -311,6 +311,20 @@ export async function resolveShippingOptions(
       trackingUrlTemplate: c.trackingUrlTemplate,
       isFreeShipping: isFree,
     })
+  }
+
+  if (options.length === 0) {
+    for (const c of defaultCouriers) {
+      options.push({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        rate: isFree ? 0 : (c.rateAllIndiaFlat ?? c.rateRestOfIndia ?? c.rateTamilNadu ?? 50),
+        estimatedDays: c.estimatedDaysAllIndia ?? c.estimatedDaysRestOfIndia ?? '2-5 business days',
+        trackingUrlTemplate: c.trackingUrlTemplate,
+        isFreeShipping: isFree,
+      })
+    }
   }
 
   return options

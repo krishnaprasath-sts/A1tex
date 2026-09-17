@@ -51,9 +51,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setPermissions([])
   }, [])
 
-  const hasPermission = useCallback((..._keys: string[]) => {
-    return true
-  }, [])
+  const hasPermission = useCallback((...keys: string[]) => {
+    if (!admin) return false
+    if (admin.role === 'super_admin') return true
+    if (!keys.length) return true
+    const permSet = new Set(permissions)
+    return keys.some(k => permSet.has(k))
+  }, [admin, permissions])
 
   const value = useMemo<AdminAuthState>(() => ({
     admin,

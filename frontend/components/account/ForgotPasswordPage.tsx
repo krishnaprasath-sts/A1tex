@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
-import { ArrowLeft, CheckCircle2, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react'
-import { forgotPassword, resetPassword } from '@/lib/api/auth'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react'
+import { forgotPassword, resetPassword, verifyOtp } from '@/lib/api/auth'
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<'email' | 'otp' | 'password'>('email')
@@ -11,6 +11,8 @@ export default function ForgotPasswordPage() {
   const [otp, setOtp] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -34,7 +36,27 @@ export default function ForgotPasswordPage() {
       await forgotPassword(email.trim())
       setStep('otp')
     } catch (apiError) {
-      setError(apiError instanceof Error ? apiError.message : 'Something went wrong.')
+      setError(apiError instanceof Error ? apiError.message : 'No account found or error sending OTP.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+
+    if (!otp.trim() || otp.trim().length !== 6) {
+      setError('Enter the 6-digit OTP sent to your email.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await verifyOtp(email.trim(), otp.trim())
+      setStep('password')
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : 'Invalid or expired OTP.')
     } finally {
       setSubmitting(false)
     }
@@ -44,10 +66,6 @@ export default function ForgotPasswordPage() {
     event.preventDefault()
     setError('')
 
-    if (!otp.trim() || otp.trim().length !== 6) {
-      setError('Enter the 6-digit OTP sent to your email.')
-      return
-    }
     if (!password) {
       setError('Enter a new password.')
       return
@@ -77,7 +95,7 @@ export default function ForgotPasswordPage() {
       <main className="relative overflow-hidden bg-[#FBF9F6]">
         <div className="pointer-events-none absolute right-0 top-0 h-[420px] w-[420px] translate-x-28 -translate-y-20 bg-[url('/borderdesign/flower-motif.png')] bg-contain bg-no-repeat opacity-[0.05]" />
         <div className="mx-auto grid min-h-[640px] max-w-[1280px] gap-8 px-4 py-12 sm:px-6 md:py-16 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
-          <section className="relative overflow-hidden border border-[#A34336]/15 bg-[#300D14] p-8 text-[#FAFAFC] shadow-[0_18px_42px_rgba(48,13,20,0.14)] md:p-10">
+          <section className="relative overflow-hidden border border-[#8B1A1A]/15 bg-[#300D14] p-8 text-[#FAFAFC] shadow-[0_18px_42px_rgba(48,13,20,0.14)] md:p-10">
             <div className="pointer-events-none absolute inset-3 border border-[#FCB900]/25" />
             <div className="relative z-10 flex min-h-full flex-col justify-between gap-12">
               <div>
@@ -92,14 +110,14 @@ export default function ForgotPasswordPage() {
             </div>
           </section>
           <section className="relative border-x border-b border-t-[4px] border-[#EAD3CE] bg-white p-5 shadow-[0_10px_32px_rgba(0,0,0,0.05)] sm:p-8 lg:p-10">
-            <div className="pointer-events-none absolute inset-2 border border-[#A34336]/10" />
+            <div className="pointer-events-none absolute inset-2 border border-[#8B1A1A]/10" />
             <div className="relative z-10 text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
                 <CheckCircle2 className="h-6 w-6" />
               </div>
               <h2 className="font-playfair mb-2 text-2xl sm:text-3xl font-medium italic tracking-wide text-[#333333]">Password updated</h2>
               <p className="font-sans mb-6 text-sm text-[#666666] font-medium">Your password has been reset successfully.</p>
-              <Link href="/login" className="inline-flex items-center justify-center rounded-md bg-[#A34336] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#8e382b]">
+              <Link href="/login" className="inline-flex items-center justify-center rounded-md bg-[#8B1A1A] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#721226]">
                 Sign In
               </Link>
             </div>
@@ -113,7 +131,7 @@ export default function ForgotPasswordPage() {
     <main className="relative overflow-hidden bg-[#FBF9F6]">
       <div className="pointer-events-none absolute right-0 top-0 h-[420px] w-[420px] translate-x-28 -translate-y-20 bg-[url('/borderdesign/flower-motif.png')] bg-contain bg-no-repeat opacity-[0.05]" />
       <div className="mx-auto grid min-h-[720px] max-w-[1280px] gap-8 px-4 py-12 sm:px-6 md:py-16 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
-        <section className="relative overflow-hidden border border-[#A34336]/15 bg-[#300D14] p-8 text-[#FAFAFC] shadow-[0_18px_42px_rgba(48,13,20,0.14)] md:p-10">
+        <section className="relative overflow-hidden border border-[#8B1A1A]/15 bg-[#300D14] p-8 text-[#FAFAFC] shadow-[0_18px_42px_rgba(48,13,20,0.14)] md:p-10">
           <div className="pointer-events-none absolute inset-3 border border-[#FCB900]/25" />
           <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full border border-[#FCB900]/20" />
 
@@ -129,10 +147,10 @@ export default function ForgotPasswordPage() {
               </h1>
               <p className="font-sans max-w-xl text-sm sm:text-base font-medium leading-relaxed text-[#E8DFD0]">
                 {step === 'email'
-                  ? "No worries. Enter the email linked to your A1 TEX account and we'll send you a reset OTP."
+                  ? "Enter the email linked to your A1 TEX account and we'll send you a 6-digit reset OTP."
                   : step === 'otp'
                   ? `We've sent a 6-digit OTP to ${email}. It expires in 15 minutes.`
-                  : 'OTP verified. Enter your new password below.'}
+                  : 'OTP verified successfully. Choose your new password.'}
               </p>
             </div>
 
@@ -152,17 +170,17 @@ export default function ForgotPasswordPage() {
         </section>
 
         <section className="relative border-x border-b border-t-[4px] border-[#EAD3CE] bg-white p-5 shadow-[0_10px_32px_rgba(0,0,0,0.05)] sm:p-8 lg:p-10">
-          <div className="pointer-events-none absolute inset-2 border border-[#A34336]/10" />
+          <div className="pointer-events-none absolute inset-2 border border-[#8B1A1A]/10" />
           <div className="relative z-10">
             <div className="mb-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#A34336]/10 text-[#A34336]">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#8B1A1A]/10 text-[#8B1A1A]">
                 {step === 'email' ? <Mail className="h-6 w-6" /> : <LockKeyhole className="h-6 w-6" />}
               </div>
               <h2 className="font-playfair mb-2 text-2xl sm:text-3xl font-medium italic tracking-wide text-[#333333]">
                 {step === 'email' ? 'Reset Password' : step === 'otp' ? 'Verify OTP' : 'New Password'}
               </h2>
               <p className="font-sans text-sm text-[#666666] font-medium">
-                {step === 'email' ? "We'll email you a secure OTP." : step === 'otp' ? 'Enter the OTP sent to your email.' : 'Choose a strong new password.'}
+                {step === 'email' ? "We'll send a 6-digit code to your email." : step === 'otp' ? 'Enter the 6-digit code to continue.' : 'Choose your new password.'}
               </p>
             </div>
 
@@ -173,30 +191,29 @@ export default function ForgotPasswordPage() {
                     Email address <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A34336]" />
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8B1A1A]" />
                     <input
                       id="forgot-email"
                       type="email"
                       value={email}
                       onChange={event => setEmail(event.target.value)}
-                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#A34336] focus:bg-white"
+                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#8B1A1A] focus:bg-white"
                       placeholder="you@example.com"
                     />
                   </div>
                 </div>
 
-                <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#A34336] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-70">
-                  <span className="absolute inset-0 z-0 origin-left scale-x-0 bg-[#8e382b] transition-transform duration-500 group-hover:scale-x-100" />
+                <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#8B1A1A] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition hover:bg-[#721226] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer">
                   <span className="relative z-10 flex items-center gap-2">
                     {submitting ? 'Sending...' : 'Send OTP'}
                   </span>
                 </button>
-                {error ? <p className="text-center text-sm font-medium text-[#A34336]">{error}</p> : null}
+                {error ? <p className="text-center text-sm font-medium text-red-600 bg-red-50 p-2.5 rounded border border-red-200">{error}</p> : null}
               </form>
             )}
 
             {step === 'otp' && (
-              <form className="space-y-5" onSubmit={e => { e.preventDefault(); setError(''); if (otp.trim().length !== 6) { setError('Enter the 6-digit OTP sent to your email.'); return } setStep('password') }} noValidate>
+              <form className="space-y-5" onSubmit={handleVerifyOtp} noValidate>
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[#666666]" htmlFor="reset-otp">
                     6-Digit OTP <span className="text-red-500">*</span>
@@ -208,18 +225,18 @@ export default function ForgotPasswordPage() {
                     maxLength={6}
                     value={otp}
                     onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full border border-[#E2E8F0] bg-[#FBF9F6] px-4 py-3 text-center text-lg font-bold tracking-[0.3em] outline-none transition focus:border-[#A34336] focus:bg-white"
+                    className="w-full border border-[#E2E8F0] bg-[#FBF9F6] px-4 py-3 text-center text-lg font-bold tracking-[0.3em] outline-none transition focus:border-[#8B1A1A] focus:bg-white"
                     placeholder="000000"
+                    autoFocus
                   />
                 </div>
 
-                <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#A34336] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-70">
-                  <span className="absolute inset-0 z-0 origin-left scale-x-0 bg-[#8e382b] transition-transform duration-500 group-hover:scale-x-100" />
+                <button type="submit" disabled={submitting} className="group relative flex w-full items-center justify-center gap-2 overflow-hidden bg-[#8B1A1A] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition hover:bg-[#721226] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer">
                   <span className="relative z-10 flex items-center gap-2">
-                    Continue
+                    {submitting ? 'Verifying...' : 'Verify OTP'}
                   </span>
                 </button>
-                {error ? <p className="text-center text-sm font-medium text-[#A34336]">{error}</p> : null}
+                {error ? <p className="text-center text-sm font-medium text-red-600 bg-red-50 p-2.5 rounded border border-red-200">{error}</p> : null}
               </form>
             )}
 
@@ -230,15 +247,23 @@ export default function ForgotPasswordPage() {
                     New password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A34336]" />
+                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8B1A1A]" />
                     <input
                       id="reset-new-password"
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={event => setPassword(event.target.value)}
-                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#A34336] focus:bg-white"
+                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-11 text-sm outline-none transition focus:border-[#8B1A1A] focus:bg-white"
                       placeholder="Minimum 6 characters"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#888888] hover:text-[#8B1A1A] transition cursor-pointer"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -246,36 +271,46 @@ export default function ForgotPasswordPage() {
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[#666666]" htmlFor="reset-confirm-password">
                     Confirm password <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    id="reset-confirm-password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={event => setConfirmPassword(event.target.value)}
-                    className="w-full border border-[#E2E8F0] bg-[#FBF9F6] px-4 py-3 text-sm outline-none transition focus:border-[#A34336] focus:bg-white"
-                    placeholder="Repeat password"
-                  />
+                  <div className="relative">
+                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8B1A1A]" />
+                    <input
+                      id="reset-confirm-password"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={event => setConfirmPassword(event.target.value)}
+                      className="w-full border border-[#E2E8F0] bg-[#FBF9F6] py-3 pl-11 pr-11 text-sm outline-none transition focus:border-[#8B1A1A] focus:bg-white"
+                      placeholder="Repeat password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#888888] hover:text-[#8B1A1A] transition cursor-pointer"
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
-                  <button type="submit" disabled={submitting} className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden bg-[#A34336] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-70">
-                    <span className="absolute inset-0 z-0 origin-left scale-x-0 bg-[#8e382b] transition-transform duration-500 group-hover:scale-x-100" />
+                  <button type="submit" disabled={submitting} className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden bg-[#8B1A1A] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-md transition hover:bg-[#721226] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer">
                     <span className="relative z-10 flex items-center gap-2">
                       {submitting ? 'Resetting...' : 'Reset Password'}
                     </span>
                   </button>
-                  <button type="button" onClick={() => { setStep('otp'); setPassword(''); setConfirmPassword(''); setError('') }} className="px-5 py-4 text-sm font-semibold text-[#A34336] border border-[#E2E8F0] transition hover:bg-[#FBF9F6]">
+                  <button type="button" onClick={() => { setStep('otp'); setPassword(''); setConfirmPassword(''); setError('') }} className="px-5 py-4 text-sm font-semibold text-[#8B1A1A] border border-[#E2E8F0] transition hover:bg-[#FBF9F6] cursor-pointer">
                     Back
                   </button>
                 </div>
-                {error ? <p className="text-center text-sm font-medium text-[#A34336]">{error}</p> : null}
+                {error ? <p className="text-center text-sm font-medium text-red-600 bg-red-50 p-2.5 rounded border border-red-200">{error}</p> : null}
               </form>
             )}
 
             <div className="mt-7 flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-5 text-sm text-[#666666] sm:flex-row">
-              <Link href="/login" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+              <Link href="/login" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
                 Back to sign in
               </Link>
-              <Link href="/register" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+              <Link href="/register" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
                 Create new account
               </Link>
             </div>

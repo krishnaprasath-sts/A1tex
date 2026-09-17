@@ -67,6 +67,8 @@ export type StorefrontBanner = {
   imageUrl: string
   ctaLabel?: string | null
   ctaUrl?: string | null
+  sortOrder?: number
+  active?: boolean
 }
 
 export type MarqueeMessageData = {

@@ -9,7 +9,21 @@ import {
 } from '../../../models/index.js'
 import { plain, decodeJsonValue } from './helpers.js'
 
+let navCache: { data: any; expiry: number } | null = null
+let announcementCache: { data: any; expiry: number } | null = null
+let marqueeCache: { data: any; expiry: number } | null = null
+
+export const clearNavCache = () => {
+  navCache = null
+  announcementCache = null
+  marqueeCache = null
+}
+
 export const getNavMenu = async (_req: Request, res: Response) => {
+  if (navCache && Date.now() < navCache.expiry) {
+    return res.json({ navigation: navCache.data })
+  }
+
   const categories = await Category.findAll({
     where: { active: true, navVisible: true, parentId: null },
     order: [['sortOrder', 'ASC'], ['id', 'ASC']],
@@ -95,29 +109,38 @@ export const getNavMenu = async (_req: Request, res: Response) => {
     }
   })
 
+  navCache = { data: navigation, expiry: Date.now() + 60000 }
   res.json({ navigation })
 }
 
 export const getAnnouncementBar = async (_req: Request, res: Response) => {
+  if (announcementCache && Date.now() < announcementCache.expiry) {
+    return res.json({ messages: announcementCache.data })
+  }
+
   const messages = await AnnouncementMessage.findAll({
     where: { active: true },
     order: [['sortOrder', 'ASC'], ['id', 'ASC']],
   })
 
-  res.json({
-    messages: messages.map(row => plain<any>(row)),
-  })
+  const mapped = messages.map(row => plain<any>(row))
+  announcementCache = { data: mapped, expiry: Date.now() + 60000 }
+  res.json({ messages: mapped })
 }
 
 export const getMarqueeMessages = async (_req: Request, res: Response) => {
+  if (marqueeCache && Date.now() < marqueeCache.expiry) {
+    return res.json({ messages: marqueeCache.data })
+  }
+
   const messages = await MarqueeMessage.findAll({
     where: { active: true },
     order: [['sortOrder', 'ASC'], ['id', 'ASC']],
   })
 
-  res.json({
-    messages: messages.map(row => plain<any>(row)),
-  })
+  const mapped = messages.map(row => plain<any>(row))
+  marqueeCache = { data: mapped, expiry: Date.now() + 60000 }
+  res.json({ messages: mapped })
 }
 
 export const getNavigation = async (_req: Request, res: Response) => {

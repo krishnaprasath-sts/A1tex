@@ -42,13 +42,13 @@ function formatDate(d: string | Date | null | undefined): string {
 
 function defaultCompany(): CompanyInfo {
   return {
-    name: 'A1 TEX',
+    name: 'A1 tex',
     address: 'A1 Tex & elampillai_silks, Elampillai',
     city: 'Salem, Tamil Nadu — 637502',
     gstin: '33ABCDE1234F1Z5',
     pan: 'ABCDE1234F',
     phone: '+91 95144 61405',
-    email: 'support@a1tex.com',
+    email: 'a1texelmpillai@gmail.com',
     invoicePrefix: 'INV',
     logoUrl: '/uploads/a1-tex-logo.png',
   }

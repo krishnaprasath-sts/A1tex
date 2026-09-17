@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.STANDALONE === 'true' ? 'standalone' : undefined,
+  output: 'standalone',
   compress: true,
   poweredByHeader: false,
   swcMinify: true,

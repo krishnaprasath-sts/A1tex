@@ -167,17 +167,26 @@ export default function CartDrawer() {
                     </button>
                   </div>
 
-                  {item.color || item.size ? (
-                    <p className="mt-1 text-[12px] text-gray-500">
-                      {item.color && <span>Color: <span className="font-medium text-[#333333]">{item.color}</span></span>}
-                      {item.color && item.size && <span className="mx-1">|</span>}
-                      {item.size && <span>Size: <span className="font-medium text-[#333333]">{item.size}</span></span>}
-                    </p>
-                  ) : item.variantLabel ? (
-                    <p className="mt-1 text-[12px] text-gray-500">
-                      Variant: <span className="font-medium text-[#333333]">{item.variantLabel}</span>
-                    </p>
-                  ) : null}
+                  {(() => {
+                    const displaySize = item.size && !['free size', 'freesize', 'one size', 'onesize'].includes(item.size.trim().toLowerCase()) ? item.size : null
+                    if (item.color || displaySize) {
+                      return (
+                        <p className="mt-1 text-[12px] text-gray-500">
+                          {item.color && <span>Color: <span className="font-medium text-[#333333]">{item.color}</span></span>}
+                          {item.color && displaySize && <span className="mx-1">|</span>}
+                          {displaySize && <span>Size: <span className="font-medium text-[#333333]">{displaySize}</span></span>}
+                        </p>
+                      )
+                    }
+                    if (item.variantLabel && !item.variantLabel.toLowerCase().includes('free size')) {
+                      return (
+                        <p className="mt-1 text-[12px] text-gray-500">
+                          Variant: <span className="font-medium text-[#333333]">{item.variantLabel}</span>
+                        </p>
+                      )
+                    }
+                    return null
+                  })()}
 
                   {item.stock != null && item.stock <= 5 ? (
                     <p className={`mt-1 text-[11px] font-medium ${
@@ -189,11 +198,11 @@ export default function CartDrawer() {
 
                   <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
                     {/* Qty controls */}
-                    <div className="flex h-8 w-20 items-center overflow-hidden border border-[#A34336]/30 bg-white">
+                    <div className="flex h-8 w-20 items-center overflow-hidden border border-[#8B1A1A]/30 bg-white">
                       <button
                         type="button"
                         onClick={() => updateQty(key, item.qty - 1)}
-                        className="flex h-full w-1/3 items-center justify-center text-xs text-gray-600 transition hover:bg-[#A34336]/10 disabled:opacity-30"
+                        className="flex h-full w-1/3 items-center justify-center text-xs text-gray-600 transition hover:bg-[#8B1A1A]/10 disabled:opacity-30"
                         aria-label={`Decrease quantity of ${item.name}`}
                         disabled={item.qty <= 1}
                       >
@@ -202,13 +211,13 @@ export default function CartDrawer() {
                       <input
                         value={item.qty}
                         readOnly
-                        className="h-full w-1/3 border-none bg-transparent text-center text-xs font-medium text-[#A34336] outline-none"
+                        className="h-full w-1/3 border-none bg-transparent text-center text-xs font-semibold text-[#8B1A1A] outline-none"
                         aria-label={`Quantity of ${item.name}`}
                       />
                       <button
                         type="button"
                         onClick={() => updateQty(key, item.qty + 1)}
-                        className="flex h-full w-1/3 items-center justify-center text-xs text-gray-600 transition hover:bg-[#A34336]/10 disabled:opacity-30"
+                        className="flex h-full w-1/3 items-center justify-center text-xs text-gray-600 transition hover:bg-[#8B1A1A]/10 disabled:opacity-30"
                         aria-label={`Increase quantity of ${item.name}`}
                         disabled={item.stock != null && item.qty >= item.stock}
                       >
@@ -217,7 +226,7 @@ export default function CartDrawer() {
                     </div>
 
                     {/* Price */}
-                    <span className="text-[15px] font-semibold text-[#A34336]">
+                    <span className="text-[15px] font-bold text-[#8B1A1A]">
                       {formatPrice(item.price * item.qty)}
                     </span>
                   </div>
@@ -230,15 +239,15 @@ export default function CartDrawer() {
 
         {/* -------- Footer (only when cart has items) -------- */}
         {items.length > 0 && (
-          <div className="relative mt-auto border-t border-[#A34336]/20 bg-white p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] sm:p-6">
-            <div className="pointer-events-none absolute inset-1.5 border border-[#A34336]/10" />
+          <div className="relative mt-auto border-t border-[#8B1A1A]/20 bg-white p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] sm:p-6">
+            <div className="pointer-events-none absolute inset-1.5 border border-[#8B1A1A]/10" />
 
             <div className="relative z-10">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium uppercase tracking-wider text-[#333333]">
                   Subtotal
                 </span>
-                <span className="text-xl font-bold text-[#A34336]">
+                <span className="text-xl font-bold text-[#8B1A1A]">
                   {formatPrice(subtotal)}
                 </span>
               </div>
@@ -258,7 +267,7 @@ export default function CartDrawer() {
               {freeShippingEnabled && !hasFreeShipping && (
                 <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-gray-200">
                   <div
-                    className="h-full rounded-full bg-[#A34336] transition-all duration-500"
+                    className="h-full rounded-full bg-[#8B1A1A] transition-all duration-500"
                     style={{ width: `${freeShippingProgress}%` }}
                   />
                 </div>
@@ -267,7 +276,7 @@ export default function CartDrawer() {
               <Link
                 href="/checkout"
                 onClick={() => setDrawerOpen(false)}
-                className="block w-full bg-[#A34336] py-3.5 text-center text-[14px] font-medium uppercase tracking-wider text-white shadow-md transition duration-300 hover:bg-[#8e382b]"
+                className="block w-full bg-[#8B1A1A] py-3.5 text-center text-[14px] font-semibold uppercase tracking-wider text-white shadow-md transition duration-300 hover:bg-[#721226]"
               >
                 Proceed to Checkout
               </Link>
@@ -275,7 +284,7 @@ export default function CartDrawer() {
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="mt-4 w-full text-center text-[13px] font-medium uppercase tracking-wider text-gray-500 transition hover:text-[#A34336]"
+                className="mt-4 w-full text-center text-[13px] font-medium uppercase tracking-wider text-gray-500 transition hover:text-[#8B1A1A]"
               >
                 Continue Shopping
               </button>

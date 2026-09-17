@@ -17,6 +17,9 @@ const transporter = nodemailer.createTransport({
     user: env.EMAIL_USER || '',
     pass: (env.EMAIL_PASS || '').replace(/\s+/g, ''),
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
 })
 
 async function pdfToBuffer(order: Record<string, unknown>, invoice: Record<string, unknown>, company?: Record<string, unknown>): Promise<Buffer> {
@@ -150,6 +153,7 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
     console.log(`[Email] OTP sent to ${to}`)
   } catch (err) {
     console.error(`[Email] Failed to send OTP email to ${to}:`, err)
+    throw err
   }
 }
 
@@ -306,10 +310,6 @@ export async function sendInvoiceEmail(
     </div>
 
     ${shippingBlock}
-
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; letter-spacing: 1px;">Track Your Order →</a>
-    </div>
 
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
@@ -629,10 +629,6 @@ export async function sendOrderConfirmationEmail(
     </div>
 
     ${shippingBlock}
-
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; letter-spacing: 1px;">Track Your Order →</a>
-    </div>
 
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
@@ -1214,10 +1210,6 @@ export async function sendPackingEmail(
       <p style="margin: 0; font-size: 13px; color: #166534; font-weight: 600;">✅ We will send you a shipping notification with your tracking details once your order is dispatched.</p>
     </div>
 
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">View Order Status →</a>
-    </div>
-
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
       <strong>${company.name}</strong>
@@ -1310,14 +1302,6 @@ export async function sendShippingEmail(
         </table>
       </div>
     </div>
-
-    ${trackingUrl ? `
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${trackingUrl}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">Track Your Order →</a>
-    </div>` : `
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">Track Your Order →</a>
-    </div>`}
 
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
@@ -1423,15 +1407,11 @@ export async function sendDeliveryEmail(
     </div>
 
     <div style="padding: 14px 18px; background-color: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; margin-bottom: 20px;">
-      <p style="margin: 0; font-size: 13px; color: #2e7d32; font-weight: 600;">We'd love to hear your feedback! Your review helps us serve you better.</p>
-    </div>
-
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${reviewUrl}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">View Order & Review →</a>
+      <p style="margin: 0; font-size: 13px; color: #2e7d32; font-weight: 600;">We'd love to hear your feedback! Thank you for shopping with us.</p>
     </div>
 
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
-      Thank you for shopping with us!<br/>
+      Regards,<br/>
       <strong>${company.name}</strong>
     </div>
     `,
@@ -1523,10 +1503,6 @@ export async function sendOutForDeliveryEmail(
       </div>
     </div>
 
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">View Delivery Status →</a>
-    </div>
-
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
       <strong>${company.name}</strong>
@@ -1605,10 +1581,6 @@ export async function sendRtoEmail(
       </div>
     </div>
 
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">View Return Status →</a>
-    </div>
-
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       Regards,<br/>
       <strong>${company.name}</strong>
@@ -1683,10 +1655,6 @@ export async function sendReturnedEmail(
           </tr>
         </table>
       </div>
-    </div>
-
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}/track-order?orderNumber=${encodeURIComponent(orderNumber)}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">View Order Details →</a>
     </div>
 
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
@@ -1785,10 +1753,6 @@ export async function sendCancellationEmail(
       </p>
     </div>` : ''}
 
-    <div style="margin-top: 24px; text-align: center;">
-      <a href="${frontendUrl}" style="display: inline-block; background: linear-gradient(135deg, #4A0F1C, #6B1A2A); color: #ffffff; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: 1px;">Continue Shopping →</a>
-    </div>
-
     <div style="font-size: 13px; margin-top: 24px; color: #555555; line-height: 1.6;">
       If you have any questions, please contact us.<br/>
       <strong>${company.name}</strong>
@@ -1824,4 +1788,70 @@ export async function sendCancellationEmail(
     throw err
   }
 }
+
+export async function sendContactNotificationEmail(data: {
+  name: string
+  email: string
+  phonenumber: string
+  message: string
+}): Promise<void> {
+  const company = await getCompanyInfo()
+  const adminEmail = env.ADMIN_EMAIL || env.EMAIL_USER || 'admin@a1tex.com'
+
+  console.log(`[Contact] New inquiry from ${data.name} (${data.email}, ${data.phonenumber}): ${data.message}`)
+
+  if (!env.EMAIL_USER || !env.EMAIL_PASS) {
+    return
+  }
+
+  // 1. Send notification to admin
+  try {
+    await transporter.sendMail({
+      from: emailFrom(company.name),
+      to: adminEmail,
+      replyTo: data.email,
+      subject: `[New Inquiry] Message from ${data.name} | ${company.name}`,
+      text: [
+        `You have received a new contact inquiry:`,
+        ``,
+        `Name: ${data.name}`,
+        `Email: ${data.email}`,
+        `Phone: ${data.phonenumber}`,
+        `Message:`,
+        data.message,
+        ``,
+        `Date: ${new Date().toLocaleString('en-IN')}`,
+      ].join('\n'),
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+          <h2 style="color: #6B1A2A; border-bottom: 2px solid #6B1A2A; padding-bottom: 8px;">New Contact Inquiry</h2>
+          <p><strong>Name:</strong> ${data.name}</p>
+          <p><strong>Email:</strong> <a href="mailto:${data.email}">${data.email}</a></p>
+          <p><strong>Phone:</strong> <a href="tel:${data.phonenumber}">${data.phonenumber}</a></p>
+          <div style="margin-top: 15px; padding: 15px; background: #f8f5f0; border-left: 4px solid #6B1A2A; border-radius: 4px;">
+            <strong>Message:</strong><br/>
+            ${data.message.replace(/\n/g, '<br/>')}
+          </div>
+        </div>
+      `,
+    })
+    console.log(`[Email] Contact inquiry notification sent to admin (${adminEmail})`)
+  } catch (err) {
+    console.error('[Email] Failed to send admin contact notification:', err)
+  }
+
+  // 2. Send acknowledgment to customer
+  try {
+    await transporter.sendMail({
+      from: emailFrom(company.name),
+      to: data.email,
+      subject: `Thank you for contacting ${company.name}`,
+      text: `Hello ${data.name},\n\nThank you for reaching out to ${company.name}. We have received your inquiry and our team will get back to you shortly.\n\nYour message:\n${data.message}\n\nWarm regards,\n${company.name}`,
+    })
+    console.log(`[Email] Contact acknowledgment sent to customer (${data.email})`)
+  } catch (err) {
+    console.error('[Email] Failed to send customer contact acknowledgment:', err)
+  }
+}
+
 

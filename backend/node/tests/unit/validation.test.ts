@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  bannerCreateSchema,
   categoryCreateSchema,
   contactEnquirySchema,
   resourceConfig,
@@ -17,39 +18,99 @@ describe('Validation Schemas (Zod)', () => {
         section: 'collections',
         name: 'Bridal Sarees',
         href: '/collections/bridal-sarees',
+        imageUrl: '/uploads/categories/bridal.jpg',
       })
       assert.equal(parsed.name, 'Bridal Sarees')
       assert.equal(parsed.section, 'collections')
       assert.equal(parsed.href, '/collections/bridal-sarees')
-      assert.equal(parsed.navVisible, false)
+      assert.equal(parsed.imageUrl, '/uploads/categories/bridal.jpg')
+      assert.equal(parsed.navVisible, true)
       assert.equal(parsed.homeVisible, true)
       assert.equal(parsed.sortOrder, 0)
     })
 
-    it('rejects invalid sections', () => {
+    it('rejects missing or empty category image', () => {
       assert.throws(() => {
         categoryCreateSchema.parse({
-          section: 'invalid-section',
+          name: 'Bridal Sarees',
+          href: '/collections/bridal-sarees',
+        })
+      })
+
+      assert.throws(() => {
+        categoryCreateSchema.parse({
+          name: 'Bridal Sarees',
+          href: '/collections/bridal-sarees',
+          imageUrl: '',
+        })
+      })
+    })
+
+    it('rejects excessively long sections', () => {
+      assert.throws(() => {
+        categoryCreateSchema.parse({
+          section: 'x'.repeat(85),
           name: 'Bridal Sarees',
           href: '/collections/bridal-sarees',
         })
       })
     })
 
-    it('rejects names shorter than 3 characters or longer than 30 characters', () => {
+    it('rejects names shorter than 2 characters or longer than 140 characters', () => {
       assert.throws(() => {
         categoryCreateSchema.parse({
           section: 'collections',
-          name: 'ab',
-          href: '/collections/ab',
+          name: 'a',
+          href: '/collections/a',
         })
       })
 
       assert.throws(() => {
         categoryCreateSchema.parse({
           section: 'collections',
-          name: 'A very long category name that exceeds thirty chars easily',
+          name: 'A'.repeat(145),
           href: '/collections/long',
+        })
+      })
+    })
+  })
+
+  describe('bannerCreateSchema', () => {
+    it('validates a correct banner payload with defaults', () => {
+      const parsed = bannerCreateSchema.parse({
+        placement: 'home_hero',
+        title: 'Festive Silk Collection',
+        subtitle: 'Handcrafted traditional sarees',
+        imageUrl: '/uploads/banners/festive.jpg',
+        ctaLabel: 'Shop Festive',
+        ctaUrl: '/shop',
+      })
+      assert.equal(parsed.placement, 'home_hero')
+      assert.equal(parsed.title, 'Festive Silk Collection')
+      assert.equal(parsed.imageUrl, '/uploads/banners/festive.jpg')
+      assert.equal(parsed.sortOrder, 0)
+      assert.equal(parsed.active, true)
+    })
+
+    it('rejects missing or empty banner image', () => {
+      assert.throws(() => {
+        bannerCreateSchema.parse({
+          placement: 'home_hero',
+          title: 'Festive Silk Collection',
+        })
+      })
+      assert.throws(() => {
+        bannerCreateSchema.parse({
+          placement: 'home_hero',
+          imageUrl: '',
+        })
+      })
+    })
+
+    it('rejects missing placement', () => {
+      assert.throws(() => {
+        bannerCreateSchema.parse({
+          imageUrl: '/uploads/banners/festive.jpg',
         })
       })
     })

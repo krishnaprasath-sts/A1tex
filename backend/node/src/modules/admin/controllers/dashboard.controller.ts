@@ -206,11 +206,10 @@ export const getDashboardStats = async (_req: Request, res: Response) => {
         key: 'orders',
         label: 'Orders',
         value: validOrders,
-        hint: 'Excludes abandoned & cancelled',
+        hint: 'Excludes cancelled & returned',
         meta: [
           { key: 'inProgress', label: 'In progress', value: inProgressOrders },
           { key: 'delivered', label: 'Delivered', value: deliveredOrders },
-          { key: 'abandoned', label: 'Abandoned', value: abandonedOrders },
         ],
       },
       {

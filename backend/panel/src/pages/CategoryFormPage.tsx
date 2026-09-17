@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Eye, FolderTree, Image as ImageIcon, Loader2, Save, Sparkles } from 'lucide-react'
-import { createResource, listResource, resolveImageUrl, updateResource, uploadImage } from '../services/api'
+import { createResource, getResource, listResource, resolveImageUrl, updateResource, uploadImage } from '../services/api'
 import type { ResourceConfig } from '../app/resources'
 import { resources } from '../app/resources'
 import { validateImageFile } from './ResourceShared'
@@ -42,15 +42,22 @@ export default function CategoryFormPage() {
   const isEdit = Boolean(id)
   const stateItem = (location.state as { item?: Record<string, unknown> } | null)?.item || null
 
-  const editItem = isEdit ? stateItem || null : null
-
-  const isLoadingItem = isEdit && !stateItem
+  // Fetch single category when editing directly without state
+  const { data: singleCatData, isLoading: isFetchingSingle } = useQuery({
+    queryKey: ['resource-single', config.api, id],
+    queryFn: () => getResource(config.api, id!),
+    enabled: isEdit && !stateItem,
+    staleTime: 30000,
+  })
 
   // Fetch all categories for parent dropdown
   const { data: catData } = useQuery({
     queryKey: ['resource', 'categories'],
     queryFn: () => listResource('categories', 1, 200),
   })
+
+  const editItem = isEdit ? stateItem || (singleCatData?.item as Record<string, unknown> | undefined) || null : null
+  const isLoadingItem = isEdit && !editItem && isFetchingSingle
 
   const allCategories = (catData?.items || []) as any[]
   const parentCategoryOptions = allCategories.filter((c: any) => !c.parentId && c.active !== false)
@@ -115,6 +122,10 @@ export default function CategoryFormPage() {
     if (!trimmedName) errors.name = 'Please enter a category name'
     else if (trimmedName.length < 2) errors.name = 'Name must be at least 2 characters'
     else if (trimmedName.length > 140) errors.name = 'Name cannot exceed 140 characters'
+
+    if (!imageUrl || !imageUrl.trim()) {
+      errors.imageUrl = 'Please upload a category image'
+    }
     return errors
   }
 
@@ -133,6 +144,7 @@ export default function CategoryFormPage() {
     try {
       const data = await uploadImage(file, 'category-card')
       setImageUrl(data.file.path)
+      setTouched(prev => ({ ...prev, imageUrl: true }))
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed.')
     } finally {
@@ -144,7 +156,7 @@ export default function CategoryFormPage() {
   const submit = (e?: FormEvent) => {
     if (e) e.preventDefault()
     setServerError('')
-    setTouched({ name: true })
+    setTouched({ name: true, imageUrl: true })
     if (!isValid) {
       const firstError = document.querySelector('.text-red-600')
       if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -160,7 +172,6 @@ export default function CategoryFormPage() {
     const effectiveSection = section.trim() || (editItem?.section && editItem.section !== 'collections' ? String(editItem.section) : name.trim())
 
     const payload: Record<string, unknown> = {
-      ...(editItem || {}),
       name: name.trim(),
       slug,
       section: effectiveSection,
@@ -168,7 +179,7 @@ export default function CategoryFormPage() {
       parentId: parentId ? parseInt(parentId, 10) : null,
       navVisible,
       headerHighlight,
-      imageUrl: imageUrl || null,
+      imageUrl: imageUrl.trim() || null,
     }
     saveMutation.mutate(payload)
   }
@@ -299,6 +310,12 @@ export default function CategoryFormPage() {
         {/* Image Upload */}
         <SectionCard title="Category Image" icon={<ImageIcon className="h-4 w-4" />}>
           <div className="space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
+                Category Image <span className="text-red-500">*</span>
+              </span>
+              <span className="text-[11px] font-semibold text-red-500">Required</span>
+            </div>
             {imageUrl ? (
               <div className="group relative overflow-hidden rounded-lg border border-[var(--line)]">
                 <div className="flex items-center justify-center p-4 min-h-[10rem]">
@@ -306,7 +323,7 @@ export default function CategoryFormPage() {
                 </div>
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 backdrop-blur-sm transition-opacity">
                   <button type="button" onClick={() => fileRef.current?.click()} className="rounded bg-white px-3 py-1.5 text-xs font-bold">Change</button>
-                  <button type="button" onClick={() => setImageUrl('')} className="rounded bg-red-600 px-3 py-1.5 text-xs font-bold text-white">Remove</button>
+                  <button type="button" onClick={() => { setImageUrl(''); setTouched(p => ({ ...p, imageUrl: true })) }} className="rounded bg-red-600 px-3 py-1.5 text-xs font-bold text-white">Remove</button>
                 </div>
               </div>
             ) : (
@@ -314,7 +331,9 @@ export default function CategoryFormPage() {
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--line)] bg-[#F9FAFB] px-4 py-8 text-center hover:border-[var(--burgundy)] group transition-colors"
+                className={`flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed bg-[#F9FAFB] px-4 py-8 text-center hover:border-[var(--burgundy)] group transition-colors ${
+                  touched.imageUrl && allErrors.imageUrl ? 'border-red-400 bg-red-50/30' : 'border-[var(--line)]'
+                }`}
               >
                 {uploading ? (
                   <Loader2 className="h-6 w-6 animate-spin text-[var(--burgundy)]" />
@@ -334,6 +353,7 @@ export default function CategoryFormPage() {
               className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
             />
+            {touched.imageUrl && allErrors.imageUrl && <p className="text-xs font-semibold text-red-600">{allErrors.imageUrl}</p>}
             {uploadError && <p className="text-xs font-semibold text-red-600">{uploadError}</p>}
           </div>
         </SectionCard>

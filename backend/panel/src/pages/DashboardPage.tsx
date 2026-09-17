@@ -7,21 +7,17 @@ import {
   Loader2,
   Package,
   ShoppingBag,
-  TrendingUp,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   getDashboardStats,
   getSalesStats,
   getSalesBreakdown,
-  getTopSellingProducts,
   resolveImageUrl,
   type StoreStat,
   type StoreStatKey,
 } from '../services/api'
 import React, { useState } from 'react'
-
-const TOP_PRODUCTS_LIMIT = 5
 
 // Store Overview numbers go stale while the admin leaves the tab open.
 const STATS_REFETCH_MS = 60_000
@@ -99,7 +95,6 @@ const cardConfig: Record<StoreStatKey, CardStyle> = {
     to: '/orders',
     metaLinks: {
       delivered: '/orders/delivered',
-      abandoned: '/orders/pending-payment',
     },
     shadowClass: 'shadow-[0_8px_20px_-6px_rgba(255,154,61,0.5)]',
     style: { background: 'linear-gradient(to bottom right, #ff9a3d, #fa7a00)' },
@@ -235,30 +230,6 @@ function StoreStatCard({ stat }: { stat: StoreStat }) {
   )
 }
 
-/* ─── Product Thumbnail (portrait, saree aspect) ────────── */
-function ProductThumb({ url, alt }: { url: string | null; alt: string }) {
-  const [failed, setFailed] = useState(false)
-  const src = url ? resolveImageUrl(url) : ''
-
-  if (!src || failed) {
-    return (
-      <div className="flex h-14 w-11 shrink-0 items-center justify-center rounded border border-gray-100 bg-gray-50">
-        <Package className="h-5 w-5 text-gray-300" />
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="h-14 w-11 shrink-0 rounded border border-gray-100 bg-gray-50 object-cover"
-    />
-  )
-}
-
 /* ─── Dashboard Page ────────────────────────────────────── */
 export default function DashboardPage() {
   const { data, isLoading, isFetching: statsFetching, error: statsError } = useQuery({
@@ -319,19 +290,6 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ['dashboard-sales-breakdown', fromDate, toDate, breakdownReady],
     queryFn: () => getSalesBreakdown(fromDate || undefined, toDate || undefined),
-    enabled: breakdownReady,
-  })
-
-  // Top sellers share the same picker, but an empty picker means ALL TIME
-  // here (a today-only best-seller list would be empty most mornings).
-  const {
-    data: topProductsData,
-    isLoading: topProductsLoading,
-    isFetching: topProductsFetching,
-    error: topProductsError,
-  } = useQuery({
-    queryKey: ['dashboard-top-products', fromDate, toDate, breakdownReady],
-    queryFn: () => getTopSellingProducts(TOP_PRODUCTS_LIMIT, fromDate || undefined, toDate || undefined),
     enabled: breakdownReady,
   })
 
@@ -525,82 +483,6 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── Top Selling Products ───────────────────────── */}
-      <section>
-        <h2 className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-4">
-          TOP SELLING PRODUCTS
-        </h2>
-
-        <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-100">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-gray-800">
-              <TrendingUp className="h-4 w-4 text-[#22c55e]" />
-              Top {TOP_PRODUCTS_LIMIT} by units sold
-              {topProductsData && (
-                <span className="font-normal text-gray-500">
-                  ({!topProductsData.range
-                    ? 'all time'
-                    : topProductsData.range.from === topProductsData.range.to
-                      ? topProductsData.range.from
-                      : `${topProductsData.range.from} to ${topProductsData.range.to}`})
-                </span>
-              )}
-            </h3>
-            {topProductsFetching && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
-          </div>
-
-          {rangeValidationError ? (
-            <p className="text-[13px] text-gray-500">Fix the date range above to see top selling products.</p>
-          ) : topProductsError ? (
-            <p className="text-[12.5px] font-medium text-red-600">
-              {topProductsError instanceof Error ? topProductsError.message : 'Failed to load top selling products.'}
-            </p>
-          ) : topProductsLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: TOP_PRODUCTS_LIMIT }).map((_, i) => (
-                <div key={i} className="animate-pulse rounded-lg bg-gray-100 h-[80px] w-full" />
-              ))}
-            </div>
-          ) : (topProductsData?.products.length ?? 0) === 0 ? (
-            <p className="text-[13px] text-gray-500 py-3">No products sold yet in this period.</p>
-          ) : (
-            <ol className="space-y-2">
-              {topProductsData!.products.map((p, index) => (
-                <li
-                  key={p.productId}
-                  className="flex items-center gap-4 rounded-lg border border-gray-100 p-3 transition-colors hover:border-gray-200 hover:bg-gray-50/60"
-                >
-                  <span className="w-5 shrink-0 text-center font-display text-[15px] font-bold text-gray-400">
-                    {index + 1}
-                  </span>
-
-                  <ProductThumb url={p.imageUrl} alt={p.name} />
-
-                  <Link
-                    to={`/products/edit/${p.productId}`}
-                    className="min-w-0 flex-1 text-[13.5px] font-medium text-gray-800 no-underline line-clamp-2 hover:text-[#7a5cfa]"
-                  >
-                    {p.name}
-                  </Link>
-
-                  <div className="w-16 shrink-0 text-right">
-                    <p className="text-[16px] font-bold leading-tight text-gray-900">{p.quantity}</p>
-                    <p className="text-[10.5px] uppercase tracking-wide text-gray-400">units</p>
-                  </div>
-
-                  <div className="w-28 shrink-0 text-right">
-                    <p className="text-[13.5px] font-semibold leading-tight text-gray-700">
-                      {formatCurrency(p.revenue)}
-                    </p>
-                    <p className="text-[10.5px] uppercase tracking-wide text-gray-400">revenue</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
           )}
         </div>
       </section>

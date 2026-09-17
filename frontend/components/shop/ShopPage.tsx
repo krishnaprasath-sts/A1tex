@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Heart, Loader2, Search, ShoppingBag, SlidersHorizontal, Star, X } from 'lucide-react'
+import { Check, ChevronDown, Heart, Loader2, Search, ShoppingBag, SlidersHorizontal, X } from 'lucide-react'
 import { fetchProducts } from '@/lib/api/storefront'
 import { resolveImageUrl } from '@/lib/api/client'
 import { getDiscount } from '@/lib/api/mappers'
@@ -19,6 +19,82 @@ const priceRanges: PriceRange[] = ['All', 'Under ₹2,000', '₹2,000 – ₹5,0
 
 const defaultDescription =
   'Explore handloom sarees, festive edits, daily drapes, and thoughtful accents selected for texture, comfort, and quiet elegance.'
+
+/* ── Custom Sort Dropdown ───────────────── */
+function CustomSortDropdown({
+  value,
+  onChange,
+}: {
+  value: SortMode
+  onChange: (mode: SortMode) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [open])
+
+  return (
+    <div ref={dropdownRef} className="relative inline-block w-full sm:w-auto text-left">
+      <button
+        type="button"
+        onClick={() => setOpen(p => !p)}
+        className="flex h-11 w-full sm:w-52 items-center justify-between gap-2 rounded-xl border border-stone-300 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-stone-800 shadow-2xs transition hover:border-[#8B1A1A] focus:border-[#8B1A1A] focus:ring-1 focus:ring-[#8B1A1A] cursor-pointer"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <div className="flex items-center gap-1.5 truncate">
+          <span className="text-[11px] uppercase tracking-wider text-stone-600">Sort:</span>
+          <span className="font-bold text-stone-900 truncate">{value}</span>
+        </div>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-stone-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-full sm:w-56 rounded-xl border border-stone-200 bg-white p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="space-y-0.5" role="listbox">
+            {sortModes.map(mode => {
+              const isSelected = mode === value
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    onChange(mode)
+                    setOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#FDF6F0] text-[#8B1A1A] font-bold'
+                      : 'text-stone-700 hover:bg-stone-50 hover:text-stone-900 active:bg-stone-100'
+                  }`}
+                  role="option"
+                  aria-selected={isSelected}
+                >
+                  <span>{mode}</span>
+                  {isSelected && <Check className="h-3.5 w-3.5 text-[#8B1A1A]" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ── Price helpers ──────────────────────── */
 function inPriceRange(price: number, range: PriceRange) {
@@ -42,57 +118,26 @@ function ShopCatalogCard({
   product: StorefrontProduct
   wished: boolean
   onToggleWishlist: () => void
-  onAddToCart: (colorName?: string) => void
+  onAddToCart: () => void
 }) {
   const slug = product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const href = `/products/${slug}`
   const disc = getDiscount(product.price, product.originalPrice)
   const badge = product.isNew ? 'New' : disc ? `${disc}% OFF` : null
-
-  const colorOptions = useMemo(() => {
-    const list: { colorName: string; colorHex?: string; imageUrl?: string }[] = []
-    const seenNames = new Set<string>()
-    const seenHexes = new Set<string>()
-    ;(product.variants || []).forEach(v => {
-      if (v.colorName) {
-        const nameKey = v.colorName.trim().toLowerCase()
-        const hexKey = v.colorHex ? v.colorHex.trim().toLowerCase() : ''
-        
-        const hasName = seenNames.has(nameKey)
-        const hasHex = hexKey ? seenHexes.has(hexKey) : false
-        
-        if (!hasName && !hasHex) {
-          seenNames.add(nameKey)
-          if (hexKey) seenHexes.add(hexKey)
-          list.push({
-            colorName: v.colorName,
-            colorHex: v.colorHex,
-            imageUrl: v.imageUrl || v.images?.[0]?.imageUrl || product.imageUrl || product.image
-          })
-        }
-      }
-    })
-    return list
-  }, [product])
-
   const isOutOfStock = !!(product.stockQty != null && product.stockQty <= 0)
-
-  const [selectedColorIdx, setSelectedColorIdx] = useState(-1)
-  const [hoverColorIdx, setHoverColorIdx] = useState(-1)
-  const effectiveIdx = hoverColorIdx >= 0 ? hoverColorIdx : selectedColorIdx
-  const activeColor = effectiveIdx >= 0 && effectiveIdx < colorOptions.length ? colorOptions[effectiveIdx] : null
-  const cartColor = selectedColorIdx >= 0 && selectedColorIdx < colorOptions.length ? colorOptions[selectedColorIdx] : null
-  const displayImage = resolveImageUrl(activeColor?.imageUrl || product.imageUrl || product.image)
+  const displayImage = resolveImageUrl(product.imageUrl || product.image)
 
   return (
     <article className="group relative flex min-w-0 flex-col border border-[var(--burgundy)] bg-[#fffaf0] shadow-[0_12px_30px_rgba(82,0,1,0.07)] transition-shadow duration-300 hover:shadow-[0_20px_42px_rgba(82,0,1,0.13)]">
       <div className="pointer-events-none absolute inset-[5px] z-10 border border-[rgba(201,168,76,0.48)]" />
 
       <div className="relative aspect-[3/4] overflow-hidden bg-[var(--ivory-dark)]">
-        <Link href={href} className="block h-full w-full no-underline">
+        <Link href={href} prefetch={true} className="block h-full w-full no-underline">
           <img
             src={displayImage}
-            alt={activeColor ? `${product.name} in ${activeColor.colorName}` : product.name}
+            alt={product.name}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           />
         </Link>
@@ -103,14 +148,9 @@ function ShopCatalogCard({
           </span>
         )}
 
-        <div className={`absolute left-3 ${badge ? 'top-11' : 'top-3'} z-30 flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5`}>
-          <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
-          <span className="text-[10px] font-semibold text-white">{product.averageRating ?? 0}</span>
-        </div>
-
         {isOutOfStock && (
           <div className="absolute left-3 z-30 flex items-center rounded bg-gray-500 px-1.5 py-0.5"
-            style={{ top: badge ? '5.5rem' : '3.5rem' }}
+            style={{ top: badge ? '2.75rem' : '0.75rem' }}
           >
             <span className="text-[10px] font-semibold text-white">Notify</span>
           </div>
@@ -124,31 +164,6 @@ function ShopCatalogCard({
         >
           <Heart className={`h-4 w-4 ${wished ? 'fill-current' : ''}`} />
         </button>
-
-        {colorOptions.length > 1 && (
-          <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center gap-1.5 bg-gradient-to-t from-black/50 via-black/20 to-transparent px-2.5 pb-2.5 pt-8"
-            onMouseLeave={() => setHoverColorIdx(-1)}
-          >
-            {colorOptions.map((color, idx) => (
-              <button
-                key={color.colorName}
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedColorIdx(idx) }}
-                onMouseEnter={() => setHoverColorIdx(idx)}
-                className={`block h-[18px] w-[18px] rounded-full border-2 transition-all duration-200 ${
-                  idx === effectiveIdx ? 'border-[#FCB900] scale-125 shadow-[0_0_0_1.5px_rgba(201,168,76,0.55)]' : 'border-white/80 hover:border-[#FCB900] hover:scale-110'
-                }`}
-                style={{ backgroundColor: color.colorHex || '#ccc' }}
-                aria-label={color.colorName}
-              />
-            ))}
-            {activeColor && (
-              <span className="ml-auto max-w-[70px] truncate text-[9px] font-semibold text-white/90 drop-shadow">
-                {activeColor.colorName}
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="relative flex flex-1 flex-col border-t border-[rgba(201,168,76,0.75)] px-2.5 py-3 md:px-4 md:py-4">
@@ -175,7 +190,7 @@ function ShopCatalogCard({
 
           <button
             type="button"
-            onClick={() => !isOutOfStock && onAddToCart(cartColor?.colorName)}
+            onClick={() => !isOutOfStock && onAddToCart()}
             disabled={isOutOfStock}
             className={`hidden md:inline-flex h-9 w-9 shrink-0 items-center justify-center border transition-colors ${
               isOutOfStock
@@ -191,13 +206,14 @@ function ShopCatalogCard({
         <div className="mt-3 md:mt-4 grid grid-cols-[1fr_32px] md:grid-cols-1 gap-1.5 md:gap-0">
           <Link
             href={href}
+            prefetch={true}
             className="inline-flex items-center justify-center border border-[var(--burgundy)] bg-[var(--burgundy)] px-2 py-2 md:px-3 md:py-2.5 text-[9px] md:text-[10px] font-bold uppercase tracking-[0.12em] md:tracking-[0.18em] text-[var(--ivory)] no-underline transition-colors hover:bg-transparent hover:text-[var(--burgundy)] text-center leading-tight"
           >
             View Details
           </Link>
           <button
             type="button"
-            onClick={() => !isOutOfStock && onAddToCart(cartColor?.colorName)}
+            onClick={() => !isOutOfStock && onAddToCart()}
             disabled={isOutOfStock}
             className={`md:hidden inline-flex h-full w-full items-center justify-center border transition-colors ${
               isOutOfStock
@@ -266,12 +282,16 @@ export default function ShopPage({
     const sizes = new Set<string>()
     products.forEach(p => {
       ;(p.variants || []).forEach(v => {
-        if (v.size) sizes.add(v.size)
+        if (v.size && !['free size', 'freesize', 'one size', 'onesize'].includes(v.size.trim().toLowerCase())) {
+          sizes.add(v.size)
+        }
       })
     })
     const sorted = Array.from(sizes).sort((a, b) => {
-      const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size', 'One Size']
-      return order.indexOf(a) - order.indexOf(b)
+      const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
+      const aIdx = order.indexOf(a)
+      const bIdx = order.indexOf(b)
+      return (aIdx !== -1 ? aIdx : 99) - (bIdx !== -1 ? bIdx : 99)
     })
     return ['All', ...sorted]
   }, [products])
@@ -342,7 +362,8 @@ export default function ShopPage({
         product.name.toLowerCase().includes(normalizedQuery) ||
         (product.category || '').toLowerCase().includes(normalizedQuery) ||
         (product.type || '').toLowerCase().includes(normalizedQuery) ||
-        (product.code || '').toLowerCase().includes(normalizedQuery)
+        (product.code || '').toLowerCase().includes(normalizedQuery) ||
+        (product.variants || []).some(v => (v.sku || '').toLowerCase().includes(normalizedQuery))
 
       // Price range filter
       const matchesPrice = inPriceRange(product.price, priceRange)
@@ -579,66 +600,77 @@ export default function ShopPage({
       </section>
 
       <section className="relative z-10 mx-auto max-w-[1500px] px-4 py-6 md:py-8 sm:px-6 lg:px-8">
-        <div className="mb-6 border border-[var(--burgundy)] bg-[#fffaf0] p-4 shadow-[0_14px_38px_rgba(82,0,1,0.06)]">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,620px)] lg:items-end">
-            <div>
-              <p className="font-montserrat text-[11px] md:text-xs font-bold uppercase tracking-[0.25em] text-[var(--gold)]">Catalog Desk</p>
-              <p className="font-montserrat mt-2 text-sm font-semibold text-[var(--burgundy)]">
-                {loading ? 'Loading products…' : `Showing ${filteredProducts.length} products`}
-              </p>
-              <p className="mt-1 text-xs text-[var(--muted)]">Search by weave, fabric, occasion, or collection mood.</p>
+        {/* Catalog Control Bar */}
+        <div className="mb-6 rounded-2xl border border-stone-200/90 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            
+            {/* Left: Product Count Pill + Mobile Filter Trigger */}
+            <div className="flex items-center justify-between sm:justify-start gap-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FDF6F0] px-3 py-1 text-xs font-bold text-[#8B1A1A] border border-[#8B1A1A]/15">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#8B1A1A]" />
+                {loading ? 'Searching catalog...' : `${filteredProducts.length} Handcrafted Sarees`}
+              </span>
+              
+              {/* Mobile Filter Button */}
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(true)}
+                className="inline-flex lg:hidden items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-800 shadow-2xs hover:border-[#8B1A1A] cursor-pointer"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-[#8B1A1A]" />
+                <span>Filters {activeFilterChips.length > 0 ? `(${activeFilterChips.length})` : ''}</span>
+              </button>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_190px]">
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--burgundy)]" />
+            {/* Right: Search Input + Custom Sort Dropdown */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <label className="relative flex-1 sm:w-64 md:w-72">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                 <input
                   value={query}
                   onChange={event => setQuery(event.target.value)}
-                  placeholder="Search sarees, fabric, occasion"
-                  className="h-11 w-full border border-[rgba(82,0,1,0.35)] bg-[var(--ivory)] pl-10 pr-3 text-sm outline-none transition focus:border-[var(--burgundy)]"
+                  placeholder="Search sarees, SKU, fabric, code..."
+                  className="h-11 w-full rounded-xl border border-stone-300 bg-stone-50/50 pl-10 pr-8 text-xs sm:text-sm text-stone-900 outline-none transition focus:border-[#8B1A1A] focus:bg-white focus:ring-1 focus:ring-[#8B1A1A]"
                 />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </label>
 
-              <select
-                value={sortMode}
-                onChange={event => setSortMode(event.target.value as SortMode)}
-                className="h-11 border border-[rgba(82,0,1,0.35)] bg-[var(--ivory)] px-3 text-sm text-[var(--charcoal)] outline-none transition focus:border-[var(--burgundy)]"
-                aria-label="Sort products"
-              >
-                {sortModes.map(mode => (
-                  <option key={mode}>{mode}</option>
-                ))}
-              </select>
+              <CustomSortDropdown value={sortMode} onChange={setSortMode} />
             </div>
           </div>
 
-          {activeFilterChips.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-[rgba(201,168,76,0.45)] pt-4">
+          {/* Active Filter Chips */}
+          {activeFilterChips.length > 0 && (
+            <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 mr-1">Active:</span>
               {activeFilterChips.map(chip => (
                 <button
                   key={chip.label}
                   type="button"
                   onClick={chip.onRemove}
-                  className="inline-flex items-center gap-2 border border-[rgba(82,0,1,0.35)] bg-[var(--ivory)] px-3 py-1.5 text-[11px] font-semibold text-[var(--burgundy)] transition-colors hover:border-[var(--burgundy)]"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#8B1A1A]/20 bg-[#FDF6F0] px-2.5 py-1 text-xs font-semibold text-[#8B1A1A] transition hover:bg-[#8B1A1A] hover:text-white cursor-pointer"
                 >
-                  {chip.label}
+                  <span>{chip.label}</span>
                   <X className="h-3 w-3" />
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs font-bold text-stone-600 hover:text-[#8B1A1A] underline ml-2 cursor-pointer"
+              >
+                Clear all
+              </button>
             </div>
-          ) : null}
-
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileFiltersOpen(true)}
-              className="inline-flex shrink-0 items-center gap-2 border border-[var(--gold)] bg-[var(--gold-pale)] px-4 py-2 text-xs font-semibold text-[var(--burgundy)]"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Filter
-            </button>
-          </div>
+          )}
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -663,7 +695,7 @@ export default function ShopPage({
                       product={product}
                       wished={wished}
                       onToggleWishlist={() => toggleWishlist(product.id, product.name)}
-                      onAddToCart={(colorName) => addToCart(product, colorName)}
+                      onAddToCart={() => addToCart(product)}
                     />
                   )
                 })}

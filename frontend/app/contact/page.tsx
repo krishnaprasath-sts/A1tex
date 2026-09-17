@@ -258,8 +258,8 @@ export default function ContactPage() {
                   <Mail className="w-5 h-5 mt-0.5 text-[var(--gold)] shrink-0" />
                   <div>
                     <h3 className="font-montserrat font-bold text-[var(--burgundy)] uppercase tracking-[0.2em] text-xs mb-1">Email</h3>
-                    <a href="mailto:support@a1tex.com" className="text-[#555] hover:text-[var(--burgundy)] transition-colors text-sm sm:text-base break-all">
-                      support@a1tex.com
+                    <a href="mailto:a1texelmpillai@gmail.com" className="text-[#555] hover:text-[var(--burgundy)] transition-colors text-sm sm:text-base break-all">
+                      a1texelmpillai@gmail.com
                     </a>
                   </div>
                 </div>
@@ -289,12 +289,12 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-montserrat font-bold text-[var(--burgundy)] uppercase tracking-[0.2em] text-xs mb-1">Instagram</h3>
                     <a
-                      href="https://www.instagram.com/a1_textiles/?hl=en"
+                      href="https://www.instagram.com/elampillai_silks?stkn=OGJ3eGRzYmw0OWN1"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[#555] hover:text-[var(--burgundy)] transition-colors text-sm sm:text-base font-semibold inline-block"
                     >
-                      @a1_textiles
+                      @elampillai_silks
                     </a>
                   </div>
                 </div>

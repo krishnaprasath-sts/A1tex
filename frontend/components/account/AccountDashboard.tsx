@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import {
   Edit3,
+  Eye,
+  EyeOff,
   Grid2X2,
   Home,
   LogOut,
@@ -17,7 +19,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { updateProfile, createAddress, deleteAddress, fetchAddresses, updateAddress, fetchOrders, changePassword, forgotPassword, resetPassword } from '@/lib/api/auth'
+import { updateProfile, createAddress, deleteAddress, fetchAddresses, updateAddress, fetchOrders, changePassword, forgotPassword, verifyOtp, resetPassword } from '@/lib/api/auth'
 import type { AddressInput, CustomerAddress, CustomerOrder } from '@/lib/api/auth'
 import { apiFetch } from '@/lib/api/client'
 import { useAuth } from '@/components/auth/AuthContext'
@@ -76,6 +78,9 @@ export default function AccountDashboard() {
     mobile: '',
   })
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState('')
@@ -83,6 +88,8 @@ export default function AccountDashboard() {
   const [forgotOtp, setForgotOtp] = useState('')
   const [forgotNewPassword, setForgotNewPassword] = useState('')
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('')
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false)
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false)
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotStep, setForgotStep] = useState<'idle' | 'otp-sent' | 'otp-entered' | 'done'>('idle')
 
@@ -639,30 +646,60 @@ export default function AccountDashboard() {
             <div className="grid min-w-0 gap-5 md:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-[#0F172A]">Current password</span>
-                <input
-                  type="password"
-                  value={passwordForm.currentPassword}
-                  onChange={event => { setPasswordForm(f => ({ ...f, currentPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
-                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
-                />
+                <div className="relative">
+                  <input
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    value={passwordForm.currentPassword}
+                    onChange={event => { setPasswordForm(f => ({ ...f, currentPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
+                    className="w-full rounded-md border border-[#E2E8F0] bg-white pl-4 pr-10 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] transition cursor-pointer"
+                    aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
+                  >
+                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-[#0F172A]">New password</span>
-                <input
-                  type="password"
-                  value={passwordForm.newPassword}
-                  onChange={event => { setPasswordForm(f => ({ ...f, newPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
-                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={passwordForm.newPassword}
+                    onChange={event => { setPasswordForm(f => ({ ...f, newPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
+                    className="w-full rounded-md border border-[#E2E8F0] bg-white pl-4 pr-10 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] transition cursor-pointer"
+                    aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-[#0F172A]">Confirm new password</span>
-                <input
-                  type="password"
-                  value={passwordForm.confirmPassword}
-                  onChange={event => { setPasswordForm(f => ({ ...f, confirmPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
-                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={passwordForm.confirmPassword}
+                    onChange={event => { setPasswordForm(f => ({ ...f, confirmPassword: event.target.value })); setPasswordError(''); setPasswordSuccess('') }}
+                    className="w-full rounded-md border border-[#E2E8F0] bg-white pl-4 pr-10 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] transition cursor-pointer"
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </label>
             </div>
 
@@ -699,9 +736,9 @@ export default function AccountDashboard() {
                   setPasswordError('')
                   setForgotLoading(true)
                   try {
-                    await forgotPassword(session?.email || profile.email)
+                    const res = await forgotPassword(session?.email || profile.email)
                     setForgotStep('otp-sent')
-                    setPasswordSuccess('OTP sent to your email.')
+                    setPasswordSuccess(res?.emailSent ? 'A 6-digit OTP has been sent to your email.' : 'We have sent an OTP to your email.')
                   } catch (err: any) {
                     setPasswordError(err?.message || 'Failed to send OTP.')
                   } finally {
@@ -709,7 +746,7 @@ export default function AccountDashboard() {
                   }
                 }}
                 disabled={forgotLoading}
-                className="text-sm font-semibold text-[#0F172A] underline transition hover:text-[#FCB900] disabled:opacity-50"
+                className="text-sm font-semibold text-[#0F172A] underline transition hover:text-[#FCB900] disabled:opacity-50 cursor-pointer"
               >
                 {forgotLoading ? 'Sending...' : 'Forgot password?'}
               </button>
@@ -733,21 +770,31 @@ export default function AccountDashboard() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => {
+                    disabled={forgotLoading}
+                    onClick={async () => {
                       setPasswordError('')
                       if (forgotOtp.length !== 6) { setPasswordError('Enter a valid 6-digit OTP.'); return }
-                      setForgotStep('otp-entered')
+                      setForgotLoading(true)
+                      try {
+                        await verifyOtp(session?.email || profile.email, forgotOtp)
+                        setForgotStep('otp-entered')
+                        setPasswordError('')
+                      } catch (err: any) {
+                        setPasswordError(err?.message || 'Invalid or expired OTP.')
+                      } finally {
+                        setForgotLoading(false)
+                      }
                     }}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-[#0F172A] px-5 py-3 font-semibold text-white transition hover:bg-[#080E1A]"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-[#0F172A] px-5 py-3 font-semibold text-white transition hover:bg-[#080E1A] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
                   >
-                    Continue
+                    {forgotLoading ? 'Verifying...' : 'Continue'}
                   </button>
                 </div>
                 <div className="mt-3 flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => { setForgotStep('idle'); setForgotOtp(''); setPasswordError(''); setPasswordSuccess('') }}
-                    className="text-sm font-semibold text-[#0F172A] underline transition hover:text-[#FCB900]"
+                    className="text-sm font-semibold text-[#0F172A] underline transition hover:text-[#FCB900] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -762,23 +809,43 @@ export default function AccountDashboard() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-[#0F172A]">New password</span>
-                    <input
-                      type="password"
-                      value={forgotNewPassword}
-                      onChange={e => setForgotNewPassword(e.target.value)}
-                      placeholder="Min 6 characters"
-                      className="w-full rounded-md border border-[#E2E8F0] bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showForgotNewPassword ? 'text' : 'password'}
+                        value={forgotNewPassword}
+                        onChange={e => setForgotNewPassword(e.target.value)}
+                        placeholder="Min 6 characters"
+                        className="w-full rounded-md border border-[#E2E8F0] bg-white pl-4 pr-10 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotNewPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] transition cursor-pointer"
+                        aria-label={showForgotNewPassword ? 'Hide new password' : 'Show new password'}
+                      >
+                        {showForgotNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-[#0F172A]">Confirm password</span>
-                    <input
-                      type="password"
-                      value={forgotConfirmPassword}
-                      onChange={e => setForgotConfirmPassword(e.target.value)}
-                      placeholder="Re-enter password"
-                      className="w-full rounded-md border border-[#E2E8F0] bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showForgotConfirmPassword ? 'text' : 'password'}
+                        value={forgotConfirmPassword}
+                        onChange={e => setForgotConfirmPassword(e.target.value)}
+                        placeholder="Re-enter password"
+                        className="w-full rounded-md border border-[#E2E8F0] bg-white pl-4 pr-10 py-3 text-sm text-[#0F172A] outline-none transition focus:border-[#0F172A]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotConfirmPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] transition cursor-pointer"
+                        aria-label={showForgotConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                      >
+                        {showForgotConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </label>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">

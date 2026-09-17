@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   }
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default async function ProductRoute({ params }: ProductPageProps) {
   const product = await fetchProductBySlug(params.slug)

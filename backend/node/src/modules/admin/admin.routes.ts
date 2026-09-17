@@ -45,6 +45,7 @@ import {
   getDispatchedCodPendingInvoicesPdf,
   sendRecoveryEmail,
   updateOrderPayment,
+  resendOrderStatusEmail,
 } from './controllers/order.controller.js'
 import {
   createInvoice,
@@ -200,6 +201,7 @@ router.get('/orders/:stage/invoices/pdf', requirePermission('manage_invoices'), 
 router.get('/orders/dispatched/cod-pending/invoices/pdf', requirePermission('manage_invoices'), asyncHandler(getDispatchedCodPendingInvoicesPdf))
 router.get('/orders/:id/pdf', requirePermission('view_orders'), asyncHandler(getOrderPdf))
 router.post('/orders/:id/send-recovery-email', requirePermission('view_orders'), asyncHandler(sendRecoveryEmail))
+router.post('/orders/:id/resend-status-email', requirePermission('view_orders'), asyncHandler(resendOrderStatusEmail))
 
 // Invoice Endpoints
 router.post('/orders/:id/invoice', requirePermission('manage_invoices'), asyncHandler(createInvoice))

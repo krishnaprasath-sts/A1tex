@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, Shield, Mail, MoreVertical, CheckCircle2, XCircle, Lock, Edit3, Loader2, X, UserCheck } from 'lucide-react'
+import { UserPlus, Shield, Mail, MoreVertical, CheckCircle2, XCircle, Lock, Edit3, Loader2, X, UserCheck, Eye, EyeOff } from 'lucide-react'
 import {
   listStaffMembers,
   createStaffMember,
@@ -49,6 +49,7 @@ export default function StaffPage() {
   const [showModal, setShowModal] = useState(false)
   const [editTarget, setEditTarget] = useState<StaffMember | null>(null)
   const [form, setForm] = useState<FormData>(defaultForm)
+  const [showPassword, setShowPassword] = useState(false)
   const [formError, setFormError] = useState('')
   const [actionMenu, setActionMenu] = useState<number | null>(null)
 
@@ -87,6 +88,7 @@ export default function StaffPage() {
   function openCreate() {
     setEditTarget(null)
     setForm(defaultForm)
+    setShowPassword(false)
     setFormError('')
     setShowModal(true)
   }
@@ -94,6 +96,7 @@ export default function StaffPage() {
   function openEdit(member: StaffMember) {
     setEditTarget(member)
     setForm({ name: member.name, email: member.email, password: '', role: member.role, customRoleId: member.customRoleId })
+    setShowPassword(false)
     setFormError('')
     setShowModal(true)
     setActionMenu(null)
@@ -103,6 +106,7 @@ export default function StaffPage() {
     setShowModal(false)
     setEditTarget(null)
     setForm(defaultForm)
+    setShowPassword(false)
     setFormError('')
   }
 
@@ -279,14 +283,22 @@ export default function StaffPage() {
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     placeholder={editTarget ? '••••••••' : 'Minimum 6 characters'}
-                    className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[var(--burgundy)] focus:ring-2 focus:ring-[var(--burgundy)]/20"
+                    className="w-full rounded-lg border border-gray-200 pl-9 pr-10 py-2.5 text-sm outline-none focus:border-[var(--burgundy)] focus:ring-2 focus:ring-[var(--burgundy)]/20"
                     required={!editTarget}
                     minLength={editTarget ? undefined : 6}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[var(--burgundy)] transition cursor-pointer"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
 

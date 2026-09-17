@@ -4,8 +4,7 @@ import nodemailer from 'nodemailer'
 import { Op } from 'sequelize'
 import { z } from 'zod'
 import { Customer, PasswordReset, CartItem, WishlistItem, GuestSession, Product, ProductVariant, Order } from '../../models/index.js'
-import { sequelize } from '../../database/sequelize.js'
-import { requireCustomerAuth } from '../../middleware/auth.js'
+import { requireCustomerAuth, optionalCustomerAuth } from '../../middleware/auth.js'
 import { AppError, asyncHandler } from '../../utils/http.js'
 import {
   clearAuthCookie,
@@ -20,13 +19,10 @@ import { sendOtpEmail } from '../../services/email.service.js'
 const router = Router()
 
 const registerSchema = z.object({
-  name: z.string().trim().min(2),
-  email: z.string().trim().email().transform(value => value.toLowerCase()),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters.'),
+  email: z.string().trim().email('Enter a valid email address.').transform(value => value.toLowerCase()),
   mobile: z.string().trim().optional().nullable(),
-  password: z.string().regex(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`])[A-Za-z\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]{6,}$/,
-    'Password must be at least 6 characters with uppercase, lowercase, number, and special character.'
-  ),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
 })
 
 const loginSchema = z.object({
@@ -146,7 +142,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   })
 
   if (existing) {
-    throw new AppError(409, 'An account already exists with this email or mobile number.')
+    throw new AppError(409, 'An account already exists with this email or mobile number. Please sign in.')
   }
 
   const passwordHash = await bcrypt.hash(input.password, 12)
@@ -226,10 +222,15 @@ router.post('/logout', asyncHandler(async (req, res) => {
   res.json({ ok: true })
 }))
 
-router.get('/me', requireCustomerAuth, asyncHandler(async (req, res) => {
+router.get('/me', optionalCustomerAuth, asyncHandler(async (req, res) => {
   const auth = (req as any).auth
+  if (!auth?.sub) {
+    return res.json({ customer: null })
+  }
   const customer = await Customer.findByPk(auth.sub)
-  if (!customer) throw new AppError(404, 'Account not found.')
+  if (!customer) {
+    return res.json({ customer: null })
+  }
   res.json({ customer: sanitizeCustomer(customer) })
 }))
 
@@ -237,42 +238,104 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email().transform(value => value.toLowerCase()),
 })
 
+const verifyOtpSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address.').transform(value => value.toLowerCase()),
+  otp: z.string().trim().length(6, 'OTP must be 6 digits.'),
+})
+
 const resetPasswordSchema = z.object({
-  otp: z.string().length(6, 'OTP must be 6 digits.'),
-  email: z.string().email(),
-  password: z.string().min(6),
+  otp: z.string().trim().length(6, 'OTP must be 6 digits.'),
+  email: z.string().trim().email().transform(value => value.toLowerCase()),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
 })
 
 router.post('/forgot-password', asyncHandler(async (req, res) => {
   const { email } = forgotPasswordSchema.parse(req.body)
 
-  const customer = await Customer.findOne({ where: { email } })
+  const customer = await Customer.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email.toLowerCase()),
+  })
   if (!customer) {
-    res.json({ message: 'If an account exists for this email, an OTP will be sent.' })
-    return
+    throw new AppError(404, 'No account found with this email address. Please check your email or register first.')
   }
 
+  const customerId = (customer as any).id
   const otp = String(Math.floor(100000 + Math.random() * 900000))
   const otpHash = await bcrypt.hash(otp, 12)
 
-  await PasswordReset.destroy({ where: { customerId: (customer as any).id } })
+  await PasswordReset.destroy({ where: { customerId } })
 
   await PasswordReset.create({
-    customerId: (customer as any).id,
+    customerId,
     tokenHash: otpHash,
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
   })
 
-  await sendOtpEmail(email, otp)
+  console.log(`[AUTH OTP] Password reset OTP generated for ${email}`)
 
-  const devOtp = env.NODE_ENV !== 'production' ? otp : undefined
-  res.json({ message: 'If an account exists for this email, an OTP will be sent.', devOtp })
+  try {
+    await sendOtpEmail(email, otp)
+  } catch (err: any) {
+    console.error(`[AUTH OTP] Email sending failed for ${email}:`, err?.message || err)
+    const isAuthErr = err?.code === 'EAUTH' || (err?.message && err.message.includes('535'))
+    if (isAuthErr) {
+      throw new AppError(500, 'Failed to send OTP: Gmail SMTP rejected credentials (535 BadCredentials). Please generate a fresh Google App Password in .env.')
+    }
+    throw new AppError(500, 'Failed to send OTP to your email. Please try again in a few moments.')
+  }
+
+  res.json({
+    message: `A 6-digit verification OTP has been sent to ${email}. Please check your inbox and spam folder.`,
+    emailSent: true,
+  })
+}))
+
+router.post('/verify-otp', asyncHandler(async (req, res) => {
+  const { email, otp } = verifyOtpSchema.parse(req.body)
+
+  const customer = await Customer.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email.toLowerCase()),
+  })
+  if (!customer) {
+    throw new AppError(404, 'No account found with this email address.')
+  }
+
+  const records = await PasswordReset.findAll({
+    where: {
+      customerId: (customer as any).id,
+      usedAt: null,
+    },
+    order: [['createdAt', 'DESC']],
+  })
+
+  let validRecord: any = null
+  for (const record of records) {
+    const raw = (record as any).get({ plain: true })
+    const match = await bcrypt.compare(otp, raw.tokenHash)
+    if (match) {
+      validRecord = record
+      break
+    }
+  }
+
+  if (!validRecord) {
+    throw new AppError(400, 'Invalid OTP. Please check the 6-digit code and try again.')
+  }
+
+  const rawRecord = (validRecord as any).get({ plain: true })
+  if (new Date(rawRecord.expiresAt) < new Date()) {
+    throw new AppError(400, 'This OTP has expired. Please request a new one.')
+  }
+
+  res.json({ valid: true, message: 'OTP verified successfully.' })
 }))
 
 router.post('/reset-password', asyncHandler(async (req, res) => {
   const { otp, email, password } = resetPasswordSchema.parse(req.body)
 
-  const customer = await Customer.findOne({ where: { email } })
+  const customer = await Customer.findOne({
+    where: sequelize.where(sequelize.fn('LOWER', sequelize.col('email')), email.toLowerCase()),
+  })
   if (!customer) {
     throw new AppError(400, 'Invalid or expired OTP.')
   }

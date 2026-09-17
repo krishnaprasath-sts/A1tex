@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { Op, Sequelize } from 'sequelize'
+import { sequelize } from '../../../database/sequelize.js'
 import {
   Category,
   Product,
@@ -118,6 +119,20 @@ export const getProducts = async (req: Request, res: Response) => {
     categoryIds = [resolvedCategoryId, ...childIds]
   }
 
+  let searchVariantProductIds: number[] = []
+  if (!filterIds && search) {
+    const variantMatches = await ProductVariant.findAll({
+      where: {
+        sku: { [Op.like]: `%${search}%` },
+        status: 'active',
+      },
+      attributes: ['productId'],
+      limit: 60,
+      raw: true,
+    }) as any[]
+    searchVariantProductIds = Array.from(new Set(variantMatches.map(v => v.productId).filter(Boolean)))
+  }
+
   const products = await Product.findAll({
     where: {
       status: 'active',
@@ -139,9 +154,11 @@ export const getProducts = async (req: Request, res: Response) => {
       ...(!filterIds && search
         ? {
             [Op.or]: [
-              { name: { [Op.like]: `%${search}%` } },
               { code: { [Op.like]: `%${search}%` } },
+              { name: { [Op.like]: `%${search}%` } },
               { type: { [Op.like]: `%${search}%` } },
+              { color: { [Op.like]: `%${search}%` } },
+              ...(searchVariantProductIds.length > 0 ? [{ id: { [Op.in]: searchVariantProductIds } }] : []),
             ],
           }
         : {}),
@@ -159,18 +176,42 @@ export const getProducts = async (req: Request, res: Response) => {
     include: [{
       model: ProductVariant,
       as: 'variants',
-      attributes: ['id', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'],
+      attributes: ['id', 'sku', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'],
       required: false,
     }],
-    order: [['sortOrder', 'ASC'], ['id', 'DESC']],
+    order: search
+      ? [
+          Sequelize.literal(`CASE 
+            WHEN code = ${sequelize.escape(search)} THEN 0 
+            WHEN code LIKE ${sequelize.escape(search + '%')} THEN 1 
+            WHEN name LIKE ${sequelize.escape(search + '%')} THEN 2 
+            ELSE 3 
+          END`),
+          ['sortOrder', 'ASC'],
+          ['id', 'DESC'],
+        ]
+      : [['sortOrder', 'ASC'], ['id', 'DESC']],
     limit: 80,
   })
 
   res.json({ products: products.map(mapProduct) })
 }
 
+const productSlugCache = new Map<string, { data: any; expiry: number }>()
+const relatedCache = new Map<number, { data: any; expiry: number }>()
+
+export const clearCatalogCache = () => {
+  productSlugCache.clear()
+  relatedCache.clear()
+}
+
 export const getProductBySlug = async (req: Request, res: Response) => {
   const slug = String(req.params.slug || '').trim()
+  const cached = productSlugCache.get(slug)
+  if (cached && Date.now() < cached.expiry) {
+    return res.json({ product: cached.data })
+  }
+
   const includes = [
     {
       model: ProductImage,
@@ -204,9 +245,15 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     order: orderArray,
   })
 
-  // Fallback 1: Partial slug prefix match, product code, or numeric ID
+  // Fallback 1: Partial slug prefix match, product code, variant SKU, or numeric ID
   if (!product && slug) {
     const isNum = /^\d+$/.test(slug)
+    const matchingVariant = await ProductVariant.findOne({
+      where: { sku: slug, status: 'active' },
+      attributes: ['productId'],
+      raw: true,
+    }) as any
+
     const orConditions: any[] = [
       { slug: { [Op.like]: `${slug}%` } },
       { slug: { [Op.like]: `%${slug}%` } },
@@ -215,6 +262,9 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     ]
     if (isNum) {
       orConditions.push({ id: Number(slug) })
+    }
+    if (matchingVariant?.productId) {
+      orConditions.push({ id: Number(matchingVariant.productId) })
     }
 
     product = await Product.findOne({
@@ -228,12 +278,19 @@ export const getProductBySlug = async (req: Request, res: Response) => {
   }
 
   if (!product) return res.status(404).json({ message: 'Product not found' })
-  res.json({ product: mapProduct(product) })
+  const mapped = mapProduct(product)
+  productSlugCache.set(slug, { data: mapped, expiry: Date.now() + 60000 })
+  res.json({ product: mapped })
 }
 
 export const getRelatedProducts = async (req: Request, res: Response) => {
   const productId = Number(req.params.id)
   if (!productId) return res.status(400).json({ message: 'Invalid product ID' })
+
+  const cachedRel = relatedCache.get(productId)
+  if (cachedRel && Date.now() < cachedRel.expiry) {
+    return res.json({ products: cachedRel.data })
+  }
 
   const product = await Product.findByPk(productId, { attributes: ['categoryId', 'subCategoryId'], raw: true }) as { categoryId: number | null; subCategoryId: number | null } | null
   if (!product) return res.status(404).json({ message: 'Product not found' })
@@ -262,14 +319,16 @@ export const getRelatedProducts = async (req: Request, res: Response) => {
     include: [{
       model: ProductVariant,
       as: 'variants',
-      attributes: ['id', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'],
+      attributes: ['id', 'sku', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'],
       required: false,
     }],
     order: [['sortOrder', 'ASC'], ['id', 'DESC']],
     limit: 8,
   })
 
-  res.json({ products: products.map(mapProduct) })
+  const mapped = products.map(mapProduct)
+  relatedCache.set(productId, { data: mapped, expiry: Date.now() + 60000 })
+  res.json({ products: mapped })
 }
 
 export const search = async (req: Request, res: Response) => {
@@ -277,12 +336,25 @@ export const search = async (req: Request, res: Response) => {
 
   const productWhere: any = { status: 'active' }
   if (q) {
+    // Fast lookup for variant SKU matches
+    const variantMatches = await ProductVariant.findAll({
+      where: {
+        sku: { [Op.like]: `%${q}%` },
+        status: 'active',
+      },
+      attributes: ['productId'],
+      limit: 30,
+      raw: true,
+    }) as any[]
+    const variantProductIds = Array.from(new Set(variantMatches.map(v => v.productId).filter(Boolean)))
+
     productWhere[Op.or] = [
-      { name: { [Op.like]: `%${q}%` } },
       { code: { [Op.like]: `%${q}%` } },
+      { name: { [Op.like]: `%${q}%` } },
       { type: { [Op.like]: `%${q}%` } },
       { color: { [Op.like]: `%${q}%` } },
       { description: { [Op.like]: `%${q}%` } },
+      ...(variantProductIds.length > 0 ? [{ id: { [Op.in]: variantProductIds } }] : []),
     ]
   }
 
@@ -292,9 +364,20 @@ export const search = async (req: Request, res: Response) => {
   const [products, categories] = await Promise.all([
     Product.findAll({
       where: productWhere,
-      order: [['sortOrder', 'ASC']],
+      order: q
+        ? [
+            Sequelize.literal(`CASE 
+              WHEN code = ${sequelize.escape(q)} THEN 0 
+              WHEN code LIKE ${sequelize.escape(q + '%')} THEN 1 
+              WHEN name LIKE ${sequelize.escape(q + '%')} THEN 2 
+              ELSE 3 
+            END`),
+            ['sortOrder', 'ASC'],
+            ['id', 'DESC'],
+          ]
+        : [['sortOrder', 'ASC'], ['id', 'DESC']],
       limit: 12,
-      include: [{ model: ProductVariant, as: 'variants', attributes: ['id', 'price', 'originalPrice', 'isDefault', 'stockQty', 'imageUrl', 'size'], required: false }],
+      include: [{ model: ProductVariant, as: 'variants', attributes: ['id', 'sku', 'price', 'originalPrice', 'isDefault', 'stockQty', 'imageUrl', 'size', 'colorName', 'colorHex'], required: false }],
     }),
     Category.findAll({ where: categoryWhere, order: [['sortOrder', 'ASC']], limit: 8 }),
   ])
@@ -329,7 +412,7 @@ export const getHome = async (_req: Request, res: Response) => {
       },
       order: [['id', 'DESC']],
       limit: 20,
-      include: [{ model: ProductVariant, as: 'variants', attributes: ['id', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'], required: false }],
+      include: [{ model: ProductVariant, as: 'variants', attributes: ['id', 'sku', 'price', 'originalPrice', 'isDefault', 'stockQty', 'size', 'colorName', 'colorHex', 'imageUrl'], required: false }],
     }),
     MarqueeMessage.findAll({ where: { active: true }, order: [['sortOrder', 'ASC']] }),
   ])

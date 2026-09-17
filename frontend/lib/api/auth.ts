@@ -40,9 +40,16 @@ export async function logoutCustomer() {
 }
 
 export async function forgotPassword(email: string) {
-  return apiFetch<{ message: string; devOtp?: string }>('/auth/forgot-password', {
+  return apiFetch<{ message: string; emailSent?: boolean }>('/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
+  })
+}
+
+export async function verifyOtp(email: string, otp: string) {
+  return apiFetch<{ valid: boolean; message: string }>('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
   })
 }
 

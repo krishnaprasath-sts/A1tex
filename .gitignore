@@ -24,6 +24,10 @@ out/
 */*/out/
 */.next/
 */*/next/
+backend-deploy/
+frontend-deploy/
+*/backend-deploy/
+*/frontend-deploy/
 
 # Large Archives & Backups (prevents GitHub 100MB rejection)
 *.zip

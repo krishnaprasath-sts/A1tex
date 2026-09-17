@@ -240,6 +240,7 @@ export async function runMigrations() {
       references: { model: 'customers', key: 'id' },
       onDelete: 'SET NULL'
     },
+    customer_name: { type: DataTypes.STRING(140), allowNull: true },
     customer_email: { type: DataTypes.STRING(190), allowNull: true },
     customer_mobile: { type: DataTypes.STRING(20), allowNull: true },
     status: { type: DataTypes.STRING(60), allowNull: false, defaultValue: 'pending' },
@@ -273,6 +274,13 @@ export async function runMigrations() {
     razorpay_payment_id: { type: DataTypes.STRING(120), allowNull: true },
     razorpay_order_id: { type: DataTypes.STRING(120), allowNull: true },
     processed_by: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+    assigned_admin_id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: { model: 'admins', key: 'id' },
+      onDelete: 'SET NULL',
+    },
+    assigned_at: { type: DataTypes.DATE, allowNull: true },
     deleted_at: { type: DataTypes.DATE, allowNull: true },
     ...timestamps,
   })
@@ -552,6 +560,22 @@ export async function runMigrations() {
     ...timestamps,
   })
 
+  await createTableIfMissing(qi, 'invoices', {
+    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    order_id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      references: { model: 'orders', key: 'id' },
+      onDelete: 'CASCADE'
+    },
+    invoice_number: { type: DataTypes.STRING(60), allowNull: false, unique: true },
+    invoice_date: { type: DataTypes.DATEONLY, allowNull: false, defaultValue: DataTypes.NOW },
+    due_date: { type: DataTypes.DATEONLY, allowNull: true },
+    status: { type: DataTypes.ENUM('paid', 'unpaid', 'cancelled'), allowNull: false, defaultValue: 'unpaid' },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+    ...timestamps,
+  })
+
   await createTableIfMissing(qi, 'email_campaigns', {
     id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
     type: { type: DataTypes.STRING(80), allowNull: false, defaultValue: 'general' },
@@ -604,8 +628,29 @@ export async function runMigrations() {
   } catch { /* data migration already done or no rows to migrate */ }
 
   // orders
+  await safeAddColumn('orders', 'customer_name', { type: DataTypes.STRING(140), allowNull: true })
+  await safeAddColumn('orders', 'customer_email', { type: DataTypes.STRING(190), allowNull: true })
   await safeAddColumn('orders', 'customer_mobile', { type: DataTypes.STRING(20), allowNull: true })
   await safeAddColumn('orders', 'payment_method', { type: DataTypes.STRING(32), allowNull: true })
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `customer_name` VARCHAR(140) NULL DEFAULT NULL")
+  } catch { /* already nullable */ }
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `customer_email` VARCHAR(190) NULL DEFAULT NULL")
+  } catch { /* already nullable */ }
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `customer_mobile` VARCHAR(20) NULL DEFAULT NULL")
+  } catch { /* already nullable */ }
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `payment_method` VARCHAR(32) NULL DEFAULT NULL")
+  } catch { /* already nullable */ }
+  // Convert status/payment_status from ENUM to VARCHAR if the live DB used an older ENUM definition
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(60) NOT NULL DEFAULT 'pending'")
+  } catch { /* already VARCHAR */ }
+  try {
+    await qi.sequelize.query("ALTER TABLE `orders` MODIFY COLUMN `payment_status` VARCHAR(60) NOT NULL DEFAULT 'pending'")
+  } catch { /* already VARCHAR */ }
   await safeAddColumn('orders', 'tracking_url', { type: DataTypes.STRING(512), allowNull: true })
   await safeAddColumn('orders', 'shipping_provider', { type: DataTypes.STRING(80), allowNull: true })
   await safeAddColumn('orders', 'delivery_agent_name', { type: DataTypes.STRING(120), allowNull: true })
@@ -619,10 +664,26 @@ export async function runMigrations() {
   await safeAddColumn('orders', 'razorpay_payment_id', { type: DataTypes.STRING(120), allowNull: true })
   await safeAddColumn('orders', 'razorpay_order_id', { type: DataTypes.STRING(120), allowNull: true })
   await safeAddColumn('orders', 'processed_by', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true })
+  await safeAddColumn('orders', 'assigned_admin_id', {
+    type: DataTypes.INTEGER.UNSIGNED,
+    allowNull: true,
+    references: { model: 'admins', key: 'id' },
+    onDelete: 'SET NULL',
+  })
+  await safeAddColumn('orders', 'assigned_at', { type: DataTypes.DATE, allowNull: true })
+  await safeAddColumn('orders', 'gst_total', { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 })
+  await safeAddColumn('orders', 'taxable_amount', { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 })
+  await safeAddColumn('orders', 'discount', { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 })
+  await safeAddColumn('orders', 'coupon_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true })
+  await safeAddColumn('orders', 'coupon_code', { type: DataTypes.STRING(50), allowNull: true })
   await safeAddColumn('orders', 'deleted_at', { type: DataTypes.DATE, allowNull: true })
 
   // order_items
   await safeAddColumn('order_items', 'sku', { type: DataTypes.STRING(80), allowNull: true })
+  await safeAddColumn('order_items', 'variant_label', { type: DataTypes.STRING(120), allowNull: true })
+  await safeAddColumn('order_items', 'color', { type: DataTypes.STRING(80), allowNull: true })
+  await safeAddColumn('order_items', 'size', { type: DataTypes.STRING(40), allowNull: true })
+  await safeAddColumn('order_items', 'image_url', { type: DataTypes.STRING(255), allowNull: true })
 
   // reviews
   await safeAddColumn('reviews', 'customer_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true })
@@ -691,13 +752,19 @@ export async function runMigrations() {
 
   // FK indexes for JOIN performance
   await safeAddIndex('products', 'idx_products_category_id', ['category_id'])
+  await safeAddIndex('products', 'idx_products_code', ['code'])
+  await safeAddIndex('products', 'idx_products_status', ['status'])
+  await safeAddIndex('products', 'idx_products_name', ['name'])
 
   await safeAddIndex('product_images', 'idx_product_images_product_id', ['product_id'])
   await safeAddIndex('product_variants', 'idx_product_variants_product_id', ['product_id'])
+  await safeAddIndex('product_variants', 'idx_product_variants_sku', ['sku'])
+  await safeAddIndex('product_variants', 'idx_product_variants_status', ['status'])
   await safeAddIndex('variant_images', 'idx_variant_images_variant_id', ['variant_id'])
   await safeAddIndex('order_items', 'idx_order_items_order_id', ['order_id'])
   await safeAddIndex('order_items', 'idx_order_items_product_id', ['product_id'])
   await safeAddIndex('order_items', 'idx_order_items_variant_id', ['variant_id'])
+  await safeAddIndex('order_items', 'idx_order_items_sku', ['sku'])
   await safeAddIndex('orders', 'idx_orders_customer_id', ['customer_id'])
   await safeAddIndex('orders', 'idx_orders_coupon_id', ['coupon_id'])
   await safeAddIndex('orders', 'idx_orders_status', ['status'])
@@ -736,28 +803,6 @@ export async function runMigrations() {
     onDelete: 'SET NULL'
   })
 
-  // stock_notifications
-  await createTableIfMissing(qi, 'stock_notifications', {
-    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
-    product_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'products', key: 'id' }, onDelete: 'CASCADE' },
-    product_name: { type: DataTypes.STRING(180), allowNull: false },
-    variant_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, references: { model: 'product_variants', key: 'id' }, onDelete: 'SET NULL' },
-    variant_label: { type: DataTypes.STRING(180), allowNull: true },
-    email: { type: DataTypes.STRING(190), allowNull: false },
-    customer_name: { type: DataTypes.STRING(140), allowNull: true },
-    status: { type: DataTypes.ENUM('pending', 'notified'), allowNull: false, defaultValue: 'pending' },
-    notified_at: { type: DataTypes.DATE, allowNull: true },
-    ...timestamps,
-  })
-  await safeAddColumn('stock_notifications', 'customer_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, references: { model: 'customers', key: 'id' }, onDelete: 'SET NULL' })
-  await safeAddColumn('stock_notifications', 'phone', { type: DataTypes.STRING(32), allowNull: true })
-  await safeAddColumn('stock_notifications', 'admin_message', { type: DataTypes.TEXT, allowNull: true })
-  await safeAddColumn('stock_notifications', 'notified_at', { type: DataTypes.DATE, allowNull: true })
-  await safeAddIndex('stock_notifications', 'idx_stock_notifications_product_id', ['product_id'])
-  await safeAddIndex('stock_notifications', 'idx_stock_notifications_variant_id', ['variant_id'])
-  await safeAddIndex('stock_notifications', 'idx_stock_notifications_email', ['email'])
-  await safeAddIndex('stock_notifications', 'idx_stock_notifications_status', ['status'])
-
   // ─── Custom Roles & Permissions ───────────────────────────────
   await createTableIfMissing(qi, 'custom_roles', {
     id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
@@ -785,15 +830,52 @@ export async function runMigrations() {
     await qi.sequelize.query("ALTER TABLE admins MODIFY COLUMN role ENUM('super_admin', 'manager', 'employee') NOT NULL DEFAULT 'employee'")
   } catch { /* already modified */ }
 
-  // orders assignment
-  await safeAddColumn('orders', 'assigned_admin_id', {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: true,
-    references: { model: 'admins', key: 'id' },
-    onDelete: 'SET NULL',
+  // ─── Shipping Rates ───────────────────────────────────────────
+  await createTableIfMissing(qi, 'shipping_rates', {
+    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    courier_service: { type: DataTypes.STRING(80), allowNull: false },
+    state: { type: DataTypes.STRING(100), allowNull: false },
+    amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0.00 },
+    estimated_days: { type: DataTypes.STRING(80), allowNull: true },
+    active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    ...timestamps,
   })
-  await safeAddColumn('orders', 'assigned_at', { type: DataTypes.DATE, allowNull: true })
-  await safeAddIndex('orders', 'idx_orders_assigned_admin_id', ['assigned_admin_id'])
+  await safeAddIndex('shipping_rates', 'uq_shipping_rates_courier_state', ['courier_service', 'state'], { unique: true })
+  await safeAddIndex('shipping_rates', 'idx_shipping_rates_courier_service', ['courier_service'])
+  await safeAddIndex('shipping_rates', 'idx_shipping_rates_state', ['state'])
+  await safeAddIndex('shipping_rates', 'idx_shipping_rates_active', ['active'])
+
+  // ─── Cleanup Unused / Legacy Tables ───────────────────────────
+  try {
+    const [fkRows] = await qi.sequelize.query(`
+      SELECT CONSTRAINT_NAME 
+      FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+      WHERE TABLE_NAME = 'products' AND REFERENCED_TABLE_NAME = 'brands'
+    `)
+    for (const row of fkRows as any[]) {
+      await qi.sequelize.query(`ALTER TABLE \`products\` DROP FOREIGN KEY \`${row.CONSTRAINT_NAME}\``)
+    }
+  } catch { /* ignored if no FK */ }
+
+  try {
+    await qi.sequelize.query("ALTER TABLE `products` DROP COLUMN `brand_id`")
+  } catch { /* ignored if column does not exist */ }
+
+  const unusedTables = [
+    'addresses',
+    'brands',
+    'cart',
+    'wishlist',
+    'users',
+    'price_drop_email_logs',
+    'price_drop_events',
+    'stock_notifications',
+  ]
+  for (const table of unusedTables) {
+    try {
+      await qi.sequelize.query(`DROP TABLE IF EXISTS \`${table}\``)
+    } catch { /* ignored */ }
+  }
 
   console.log('Migration complete.')
 }

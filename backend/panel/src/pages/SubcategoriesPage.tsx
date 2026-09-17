@@ -302,7 +302,6 @@ export default function SubcategoriesPage() {
     const errors: Record<string, string> = {}
     if (!parentId) errors.parentId = 'Please select a parent category'
     if (!name.trim()) errors.name = 'Name is required'
-    if (!imageUrl) errors.imageUrl = 'Subcategory image is required'
     return errors
   }
 
@@ -334,18 +333,18 @@ export default function SubcategoriesPage() {
   const submit = (e?: FormEvent) => {
     if (e) e.preventDefault()
     setServerError('')
-    setTouched({ parentId: true, name: true, imageUrl: true })
+    setTouched({ parentId: true, name: true })
     if (!isValid) return
 
     const parent = categories.find((c: any) => String(c.id) === parentId)
     const slug = getSlug()
     const payload = {
-      section: parent?.section || parent?.name || '',
+      section: parent?.section || parent?.name || name.trim(),
       parentId: parseInt(parentId, 10),
       name: name.trim(),
       slug,
       href: `/shop?category=${slug}`,
-      imageUrl: imageUrl || null,
+      imageUrl: imageUrl.trim() || null,
       tag: (editItem as any)?.tag || '',
       navVisible: true,
       homeVisible: true,
@@ -419,7 +418,7 @@ export default function SubcategoriesPage() {
       </SectionCard>
 
       <SectionCard title="Image" icon={<ImageIcon className="h-4 w-4" />}>
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Image <span className="text-red-500">* Required</span></label>
+        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Image <span className="text-[var(--muted)] font-normal">(Optional)</span></label>
         <div className={`space-y-2 ${touched.imageUrl && allErrors.imageUrl ? 'p-1 rounded-lg border-2 border-red-400 bg-red-50/30' : ''}`}>
           {imageUrl ? (
             <div className={`group relative overflow-hidden rounded-lg border ${touched.imageUrl && allErrors.imageUrl ? 'border-red-400' : 'border-[var(--line)]'}`}>

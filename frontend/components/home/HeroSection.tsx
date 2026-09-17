@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { requestHomeData } from '@/components/home/HomeComponents'
@@ -215,57 +215,102 @@ function Slide2() {
 export default function HeroSection() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [dynamicBanners, setDynamicBanners] = useState<StorefrontBanner[]>([])
+  const touchStartXRef = useRef<number | null>(null)
+  const touchEndXRef = useRef<number | null>(null)
 
   useEffect(() => {
     let active = true
     requestHomeData().then(data => {
       if (!active) return
       const heroBanners = (data.banners || []).filter(banner => 
-        banner.placement === 'home_hero' || 
-        banner.placement === 'hero_slider' || 
-        banner.placement === 'hero' || 
-        banner.placement === 'header_below' ||
-        banner.placement === 'main' || 
-        !banner.placement
+        banner.active !== false && (
+          banner.placement === 'home_hero' || 
+          banner.placement === 'hero_slider' || 
+          banner.placement === 'hero' || 
+          banner.placement === 'header_below' ||
+          banner.placement === 'main' || 
+          banner.placement === 'promotional' ||
+          !banner.placement
+        )
       )
-      if (heroBanners.length > 0) {
-        setDynamicBanners(heroBanners)
-      }
+      setDynamicBanners(heroBanners)
     }).catch(() => {})
     return () => {
       active = false
     }
   }, [])
 
-  const slides = dynamicBanners.length > 0
-    ? dynamicBanners.map((banner, index) => ({
-        id: `banner-${banner.id || index}`,
-        bg: 'var(--charcoal)',
-        content: <DynamicBannerSlide banner={banner} />,
-      }))
-    : [
-        { id: 'cinematic', bg: 'var(--charcoal)', content: <CinematicHero /> },
-        { id: 'slide2', bg: 'var(--burgundy)', content: <Slide2 /> }
-      ]
+  const slides = useMemo(() => {
+    return dynamicBanners.length > 0
+      ? dynamicBanners.map((banner, index) => ({
+          id: `banner-${banner.id || index}`,
+          bg: 'var(--charcoal)',
+          content: <DynamicBannerSlide banner={banner} />,
+        }))
+      : [
+          { id: 'cinematic', bg: 'var(--charcoal)', content: <CinematicHero /> },
+          { id: 'slide2', bg: 'var(--burgundy)', content: <Slide2 /> }
+        ]
+  }, [dynamicBanners])
 
-  const next = () => setCurrentSlide(p => (p + 1) % slides.length)
-  const prev = () => setCurrentSlide(p => (p === 0 ? slides.length - 1 : p - 1))
+  const totalSlides = slides.length
 
+  const next = useCallback(() => {
+    if (totalSlides <= 1) return
+    setCurrentSlide(p => (p + 1) % totalSlides)
+  }, [totalSlides])
+
+  const prev = useCallback(() => {
+    if (totalSlides <= 1) return
+    setCurrentSlide(p => (p === 0 ? totalSlides - 1 : p - 1))
+  }, [totalSlides])
+
+  // Resilient auto-play for mobile and desktop (resets on slide change)
   useEffect(() => {
-    const t = setInterval(next, 6000)
-    return () => clearInterval(t)
-  }, [slides.length])
+    if (totalSlides <= 1) return
+    const timer = setInterval(() => {
+      setCurrentSlide(p => (p + 1) % totalSlides)
+    }, 4500)
+    return () => clearInterval(timer)
+  }, [totalSlides, currentSlide])
+
+  // Touch handlers for mobile swipe
+  const minSwipeDistance = 40
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchEndXRef.current = null
+    touchStartXRef.current = e.targetTouches[0].clientX
+  }
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    touchEndXRef.current = e.targetTouches[0].clientX
+  }
+
+  const onTouchEnd = () => {
+    if (!touchStartXRef.current || !touchEndXRef.current) return
+    const distance = touchStartXRef.current - touchEndXRef.current
+    if (distance > minSwipeDistance) {
+      next()
+    } else if (distance < -minSwipeDistance) {
+      prev()
+    }
+    touchStartXRef.current = null
+    touchEndXRef.current = null
+  }
 
   return (
     <div
-      className="relative w-full overflow-hidden group aspect-[4/5] max-h-[calc(100svh-155px)] md:max-h-none md:aspect-auto md:h-[68vh] lg:h-[82vh] min-h-[350px] md:min-h-[440px]"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      className="relative w-full overflow-hidden group aspect-[4/5] max-h-[calc(100svh-155px)] md:max-h-none md:aspect-auto md:h-[68vh] lg:h-[82vh] min-h-[350px] md:min-h-[440px] select-none touch-pan-y"
     >
       {/* Slide track */}
       <div className="relative w-full h-full bg-[var(--charcoal)]">
         {slides.map((slide, idx) => (
           <div
             key={String(slide.id)}
-            className="absolute inset-0 w-full h-full transition-opacity duration-[1000ms] ease-in-out"
+            className="absolute inset-0 w-full h-full transition-opacity duration-700 ease-in-out"
             style={{ 
               background: slide.bg,
               opacity: currentSlide === idx ? 1 : 0,
@@ -280,20 +325,22 @@ export default function HeroSection() {
 
       {/* Prev button */}
       <button
+        type="button"
         onClick={prev}
-        className="absolute left-5 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center text-white opacity-0 md:group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110 bg-black/40 backdrop-blur-md border border-white/20 hover:border-[var(--gold)] shadow-xl"
+        className="absolute left-3 md:left-5 top-1/2 -translate-y-1/2 w-9 h-9 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110 bg-black/40 backdrop-blur-md border border-white/20 hover:border-[var(--gold)] shadow-xl cursor-pointer"
         aria-label="Previous slide"
       >
-        <ChevronLeft size={24} />
+        <ChevronLeft size={20} className="md:w-6 md:h-6" />
       </button>
 
       {/* Next button */}
       <button
+        type="button"
         onClick={next}
-        className="absolute right-5 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center text-white opacity-0 md:group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110 bg-black/40 backdrop-blur-md border border-white/20 hover:border-[var(--gold)] shadow-xl"
+        className="absolute right-3 md:right-5 top-1/2 -translate-y-1/2 w-9 h-9 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110 bg-black/40 backdrop-blur-md border border-white/20 hover:border-[var(--gold)] shadow-xl cursor-pointer"
         aria-label="Next slide"
       >
-        <ChevronRight size={24} />
+        <ChevronRight size={20} className="md:w-6 md:h-6" />
       </button>
 
       {/* Modern Slide Indicators */}
@@ -301,8 +348,9 @@ export default function HeroSection() {
         {slides.map((_, idx) => (
           <button
             key={idx}
+            type="button"
             onClick={() => setCurrentSlide(idx)}
-            className="p-1 group/dot"
+            className="p-1 group/dot cursor-pointer"
             aria-label={`Go to slide ${idx + 1}`}
           >
             <span

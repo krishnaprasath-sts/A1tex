@@ -1,6 +1,6 @@
 export const defaultAnnouncementMessages = [
-  'Shipping Worldwide',
-  'Easy Return & Exchange*',
+  'Shipping All Over India',
+  '100% Authentic Handloom Silk',
   'EMI Option Available*',
   'Saving Scheme available*',
   'Delivery Time: 1 - 3 Weeks',

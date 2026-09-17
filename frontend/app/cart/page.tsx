@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, CreditCard, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import FloatingActions from '@/components/ui/FloatingActions'
@@ -250,14 +250,6 @@ function CartPageContent() {
                       <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-2" />
                     </span>
                   </button>
-
-                  <div className="mt-6 flex justify-center gap-4 border-t border-gray-100 pt-6 text-gray-400">
-                    {['Visa', 'Mastercard', 'GPay', 'ApplePay'].map(label => (
-                      <div key={label} className="flex h-9 w-12 items-center justify-center rounded border border-gray-200 text-[10px] font-bold uppercase transition-all duration-300 hover:-translate-y-1 hover:scale-110 hover:border-[var(--burgundy)]/30 hover:text-[var(--burgundy)]">
-                        <CreditCard className="h-4 w-4" />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </aside>

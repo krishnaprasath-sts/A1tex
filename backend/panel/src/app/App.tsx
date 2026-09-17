@@ -26,10 +26,12 @@ import SettingsPage from '../pages/SettingsPage'
 import ShippingZonesPage from '../pages/ShippingZonesPage'
 import RolesPage from '../pages/RolesPage'
 import MyOrdersPage from '../pages/MyOrdersPage'
+import StaffPage from '../pages/StaffPage'
+import ReviewsPage from '../pages/ReviewsPage'
 import { resources, type ResourceConfig } from './resources'
 import { AdminAuthProvider, useAdminAuth } from '../contexts/AdminAuthContext'
 
-const orderPaths = ['orders', 'orders/pending-payment', 'orders/pending', 'orders/confirmed', 'orders/packing', 'orders/dispatched', 'orders/out-for-delivery', 'orders/delivered', 'orders/cancelled', 'orders/rto', 'orders/returned']
+const orderPaths = ['orders', 'orders/pending', 'orders/confirmed', 'orders/packing', 'orders/dispatched', 'orders/out-for-delivery', 'orders/delivered', 'orders/cancelled', 'orders/rto', 'orders/returned']
 
 const resourcePermissionMap: Record<string, string[]> = {
   announcements: ['manage_settings'],
@@ -40,6 +42,11 @@ const resourcePermissionMap: Record<string, string[]> = {
   customers: ['manage_customers'],
   coupons: ['manage_coupons'],
   enquiries: ['manage_customers'],
+  reviews: ['manage_products'],
+  'email-campaigns': ['manage_email_campaigns'],
+  staff: ['manage_staff'],
+  roles: ['manage_roles'],
+  settings: ['manage_settings'],
 }
 
 function LoadingScreen() {
@@ -93,14 +100,14 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<AuthGuard />}>
         <Route element={<AdminLayout />}>
-          <Route path="/" element={protect(<DashboardPage />)} />
+          <Route path="/" element={protect(<DashboardPage />, ['view_dashboard'])} />
           {resources.map(resource => {
             if (resource.path === '/orders') return null
             const basePath = resource.path.replace('/', '')
             if (basePath === 'categories' || basePath === 'products') return null
             return (
               <Fragment key={resource.path}>
-                <Route path={basePath} element={protect(basePath === 'coupons' ? <CouponsListPage /> : <ResourceListPage config={resource} />)} />
+                <Route path={basePath} element={protect(basePath === 'coupons' ? <CouponsListPage /> : <ResourceListPage config={resource} />, resourcePermissions(resource))} />
                 <Route
                   path={`${basePath}/new`}
                   element={protect(
@@ -110,7 +117,8 @@ function AppRoutes() {
                         ? <BannerFormPage />
                         : basePath === 'coupons'
                           ? <CouponFormPage />
-                          : <ResourceFormPage config={resource} />
+                          : <ResourceFormPage config={resource} />,
+                    resourcePermissions(resource)
                   )}
                 />
                 <Route
@@ -122,34 +130,39 @@ function AppRoutes() {
                         ? <BannerFormPage />
                         : basePath === 'coupons'
                           ? <CouponFormPage />
-                          : <ResourceFormPage config={resource} />
+                          : <ResourceFormPage config={resource} />,
+                    resourcePermissions(resource)
                   )}
                 />
               </Fragment>
             )
           })}
-          <Route path="categories" element={protect(<CategoriesPage />)} />
-          <Route path="categories/new" element={protect(<CategoryFormPage />)} />
-          <Route path="categories/edit/:id" element={protect(<CategoryFormPage />)} />
+          <Route path="categories" element={protect(<CategoriesPage />, ['manage_products'])} />
+          <Route path="categories/new" element={protect(<CategoryFormPage />, ['manage_products'])} />
+          <Route path="categories/edit/:id" element={protect(<CategoryFormPage />, ['manage_products'])} />
           <Route path="collections" element={<Navigate to="/categories" replace />} />
           <Route path="collections/*" element={<Navigate to="/categories" replace />} />
-          <Route path="products" element={protect(<ProductsListPage />)} />
-          <Route path="products/new" element={protect(<ProductFormPage />)} />
-          <Route path="products/edit/:id" element={protect(<ProductFormPage />)} />
-          <Route path="guest-coupon" element={protect(<GuestCouponPage />)} />
-          <Route path="invoices" element={protect(<InvoiceManagementPage />)} />
-          <Route path="subcategories" element={protect(<SubcategoriesPage />)} />
-          <Route path="subcategories/new" element={protect(<SubcategoriesPage />)} />
-          <Route path="subcategories/edit/:id" element={protect(<SubcategoriesPage />)} />
-          <Route path="variants" element={protect(<VariantsPage />)} />
-          <Route path="stock" element={protect(<StockPage />)} />
-          <Route path="settings" element={<Navigate to="/shipping-zones" replace />} />
-          <Route path="shipping-zones" element={protect(<ShippingZonesPage />)} />
-          <Route path="my-orders" element={protect(<MyOrdersPage />)} />
+          <Route path="products" element={protect(<ProductsListPage />, ['manage_products'])} />
+          <Route path="products/new" element={protect(<ProductFormPage />, ['manage_products'])} />
+          <Route path="products/edit/:id" element={protect(<ProductFormPage />, ['manage_products'])} />
+          <Route path="guest-coupon" element={protect(<GuestCouponPage />, ['manage_settings'])} />
+          <Route path="invoices" element={protect(<InvoiceManagementPage />, ['manage_invoices'])} />
+          <Route path="subcategories" element={protect(<SubcategoriesPage />, ['manage_products'])} />
+          <Route path="subcategories/new" element={protect(<SubcategoriesPage />, ['manage_products'])} />
+          <Route path="subcategories/edit/:id" element={protect(<SubcategoriesPage />, ['manage_products'])} />
+          <Route path="variants" element={protect(<VariantsPage />, ['manage_products'])} />
+          <Route path="stock" element={protect(<StockPage />, ['manage_stock'])} />
+          <Route path="reviews" element={protect(<ReviewsPage />, ['manage_products'])} />
+          <Route path="email-campaigns" element={protect(<EmailCampaignsPage />, ['manage_email_campaigns'])} />
+          <Route path="staff" element={protect(<StaffPage />, ['manage_staff'])} />
+          <Route path="roles" element={protect(<RolesPage />, ['manage_roles'])} />
+          <Route path="settings" element={protect(<SettingsPage />, ['manage_settings'])} />
+          <Route path="shipping-zones" element={protect(<ShippingZonesPage />, ['manage_settings'])} />
+          <Route path="my-orders" element={protect(<MyOrdersPage />, ['view_my_orders'])} />
           {orderPaths.map(path => (
-            <Route key={path} path={path} element={protect(<OrdersLayout />)} />
+            <Route key={path} path={path} element={protect(<OrdersLayout />, ['view_orders'])} />
           ))}
-          <Route path="orders/:id" element={protect(<OrderDetailPage />)} />
+          <Route path="orders/:id" element={protect(<OrderDetailPage />, ['view_orders', 'view_my_orders'])} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,10 +1,14 @@
 import Razorpay from 'razorpay'
 import { createHmac } from 'crypto'
 import { env } from '../config/env.js'
+import { AppError } from '../utils/http.js'
 
 function getRazorpayInstance(): Razorpay {
-  const key_id = process.env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET
+  const key_id = (process.env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || '').trim()
+  const key_secret = (process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET || '').trim()
+  if (!key_id || !key_secret) {
+    throw new AppError(500, 'Razorpay API credentials are not configured.')
+  }
   return new Razorpay({ key_id, key_secret })
 }
 
@@ -43,7 +47,7 @@ export function verifyPayment(params: {
   razorpaySignature: string
 }): boolean {
   const body = `${params.razorpayOrderId}|${params.razorpayPaymentId}`
-  const secret = process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET
+  const secret = (process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET || '').trim()
   const expectedSignature = createHmac('sha256', secret)
     .update(body)
     .digest('hex')

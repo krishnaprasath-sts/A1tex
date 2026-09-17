@@ -1,12 +1,9 @@
 import { DataTypes } from 'sequelize'
 import { sequelize } from '../database/sequelize.js'
-import { PriceDropEvent, PriceDropEmailLog, initPriceDropAssociations } from './price-drop.models.js'
 import { EmailCampaign } from './email-campaign.model.js'
-import { StockNotification } from './stock-notification.model.js'
 import { ContactEnquiry } from './contact-enquiry.model.js'
 import { ShippingRate } from './shipping-rate.model.js'
 export { EmailCampaign }
-export { StockNotification }
 export { ContactEnquiry }
 export { ShippingRate }
 
@@ -236,6 +233,7 @@ export const Order = sequelize.define('Order', {
   id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
   orderNumber: { type: DataTypes.STRING(80), allowNull: false, unique: true, field: 'order_number' },
   customerId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, field: 'customer_id' },
+  customerName: { type: DataTypes.STRING(140), allowNull: true, field: 'customer_name' },
   customerEmail: { type: DataTypes.STRING(190), allowNull: true, field: 'customer_email' },
   customerMobile: { type: DataTypes.STRING(20), allowNull: true, field: 'customer_mobile' },
   status: { type: DataTypes.STRING(60), allowNull: false, defaultValue: 'pending' },
@@ -528,10 +526,7 @@ export const models = {
   ReviewImage,
   OrderStatusHistory,
   Refund,
-  PriceDropEvent,
-  PriceDropEmailLog,
   EmailCampaign,
-  StockNotification,
   GuestSession,
   WishlistItem,
   CustomRole,
@@ -586,13 +581,6 @@ export function initAssociations() {
   OrderStatusHistory.belongsTo(Order, { foreignKey: 'order_id' })
   Order.hasMany(Refund, { foreignKey: 'order_id', as: 'refunds' })
   Refund.belongsTo(Order, { foreignKey: 'order_id' })
-
-  // Price drop associations
-  initPriceDropAssociations()
-
-  // Stock notification associations
-  StockNotification.belongsTo(Product, { foreignKey: 'product_id', as: 'product' })
-  StockNotification.belongsTo(ProductVariant, { foreignKey: 'variant_id', as: 'variant' })
 
   // Role & staff associations
   CustomRole.hasMany(RolePermission, { foreignKey: 'role_id', as: 'permissions' })

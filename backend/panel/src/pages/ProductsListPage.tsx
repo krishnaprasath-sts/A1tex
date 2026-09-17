@@ -143,8 +143,8 @@ export default function ProductsListPage() {
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { setSearchTerm(searchInput.trim()); setCurrentPage(1) } }}
-                placeholder="Search products..."
-                className="h-10 w-56 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
+                placeholder="Search by name, SKU, code..."
+                className="h-10 w-64 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
               />
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
             </div>
@@ -338,13 +338,20 @@ export default function ProductsListPage() {
                             >
                               <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/products/edit/${item.id}`, { state: { item } })}
-                              className="truncate hover:text-[var(--gold)] transition-colors"
-                            >
-                              {item.name}
-                            </button>
+                            <div className="min-w-0 flex flex-col">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/products/edit/${item.id}`, { state: { item } })}
+                                className="truncate text-left hover:text-[var(--gold)] transition-colors"
+                              >
+                                {item.name}
+                              </button>
+                              {item.code ? (
+                                <span className="font-mono text-[11px] text-[var(--muted)] font-normal">
+                                  Code: {item.code}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className="border border-[var(--line)] px-5 py-4">

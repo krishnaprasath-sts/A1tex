@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock, CreditCard, Download, FileText, Loader2, Mail, Navigation, Package, PackageX, RefreshCcw, RotateCcw, ShoppingBag, Truck, XCircle } from 'lucide-react'
-import { apiBaseUrl, generateInvoice, getInvoice, getOrderDetail, transitionOrderStatus, updateOrderPayment, resolveImageUrl, apiFetch, downloadBlob, sendRecoveryEmail, listResource } from '../services/api'
+import { apiBaseUrl, generateInvoice, getInvoice, getOrderDetail, transitionOrderStatus, updateOrderPayment, resolveImageUrl, apiFetch, downloadBlob, sendRecoveryEmail, listResource, resendOrderStatusEmail } from '../services/api'
 import { displayValue } from './ResourceShared'
 import { useAdminAuth } from '../contexts/AdminAuthContext'
 
@@ -16,6 +16,20 @@ const pipelineStages = [
   { key: 'rto', label: 'RTO', Icon: RotateCcw },
   { key: 'returned', label: 'Returned', Icon: PackageX },
 ]
+
+const validTransitionsMap: Record<string, string[]> = {
+  pending_payment: ['pending', 'confirmed', 'cancelled'],
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['packing', 'pending', 'cancelled'],
+  packing: ['dispatched', 'confirmed', 'cancelled'],
+  dispatched: ['out_for_delivery', 'delivered', 'rto', 'packing', 'cancelled'],
+  shipped: ['out_for_delivery', 'delivered', 'rto', 'packing', 'cancelled'],
+  out_for_delivery: ['delivered', 'rto', 'dispatched', 'cancelled'],
+  delivered: ['returned', 'rto'],
+  rto: ['returned', 'dispatched', 'cancelled'],
+  returned: ['cancelled'],
+  cancelled: ['pending'],
+}
 
 const nextStageMap: Record<string, { status: string; label: string }> = {
   pending_payment: { status: 'pending', label: 'Confirm COD' },
@@ -64,6 +78,7 @@ export default function OrderDetailPage() {
   const [invoiceGenerating, setInvoiceGenerating] = useState(false)
   const [invoiceRegenerating, setInvoiceRegenerating] = useState(false)
   const [recoverySending, setRecoverySending] = useState(false)
+  const [resendingEmail, setResendingEmail] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['order-detail', id],
@@ -209,6 +224,21 @@ export default function OrderDetailPage() {
       trackingUrl: trackingUrl.trim() || undefined,
       isManualShipping: true,
     })
+  }
+
+  async function handleResendStatusEmail() {
+    if (!id) return
+    setResendingEmail(true)
+    try {
+      const res = await resendOrderStatusEmail(id)
+      setSuccessMsg(res.message || 'Status notification email sent to customer!')
+      setTimeout(() => setSuccessMsg(''), 5000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to send status email.')
+      setTimeout(() => setError(''), 6000)
+    } finally {
+      setResendingEmail(false)
+    }
   }
 
   const paymentMut = useMutation({
@@ -596,13 +626,13 @@ export default function OrderDetailPage() {
         </section>
       )}
 
-      {/* Payment & Settlement Details */}
+      {/* Payment Information */}
       <section className="admin-card rounded-lg p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-[var(--gold)]" />
             <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--burgundy)]">
-              Payment & Settlement Details
+              Payment Information
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -610,103 +640,38 @@ export default function OrderDetailPage() {
               Status: {orderPaymentStatus.toUpperCase()}
             </span>
             <span className="admin-badge text-xs px-2.5 py-1 font-bold uppercase tracking-wider bg-[var(--panel-strong)] text-[var(--gold)] border border-[var(--line)]">
-              Method: {paymentMethod.toUpperCase()}
+              Method: {paymentMethod === 'cod' ? 'ONLINE (PAID)' : paymentMethod.toUpperCase()}
             </span>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 bg-[#FCFBF9] p-4 rounded-lg border border-[var(--line)]">
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-              Payment Method
-            </label>
-            <select
-              value={paymentMethod}
-              onChange={e => setPaymentMethod(e.target.value)}
-              className="admin-input w-full rounded px-3 py-2 text-sm"
-            >
-              <option value="cod">Cash on Delivery (COD)</option>
-              <option value="upi">UPI (GPay / PhonePe / Paytm)</option>
-              <option value="card">Credit / Debit Card</option>
-              <option value="netbanking">Net Banking</option>
-              <option value="cash">Direct Cash</option>
-              <option value="bank_transfer">Bank Transfer (NEFT / IMPS)</option>
-              <option value="razorpay">Razorpay Online</option>
-            </select>
+            <span className="block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">Payment Mode</span>
+            <p className="mt-1 text-sm font-semibold text-[var(--text)]">Razorpay Online Payment</p>
           </div>
-
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-              Payment Status
-            </label>
-            <select
-              value={orderPaymentStatus}
-              onChange={e => setOrderPaymentStatus(e.target.value)}
-              className="admin-input w-full rounded px-3 py-2 text-sm"
-            >
-              <option value="pending">Pending</option>
-              <option value="paid">Paid / Received</option>
-              <option value="failed">Failed</option>
-              <option value="refunded">Refunded</option>
-            </select>
+            <span className="block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">Payment Status</span>
+            <p className="mt-1 text-sm font-semibold text-[var(--text)] flex items-center gap-1.5">
+              {orderPaymentStatus === 'paid' ? (
+                <span className="text-emerald-700 flex items-center gap-1"><Check className="h-4 w-4" /> Paid & Verified</span>
+              ) : (
+                <span className="text-amber-700 flex items-center gap-1"><Clock className="h-4 w-4" /> Pending</span>
+              )}
+            </p>
           </div>
-
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-              Transaction ID / UTR (optional)
-            </label>
-            <input
-              type="text"
-              value={transactionId}
-              onChange={e => setTransactionId(e.target.value)}
-              placeholder="e.g. pay_29Xkd891 or UTR123456"
-              className="admin-input w-full rounded px-3 py-2 text-sm font-mono"
-            />
+            <span className="block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">Transaction / Payment ID</span>
+            <p className="mt-1 text-sm font-mono font-medium text-[var(--text)] truncate">
+              {transactionId || (order?.metadata as any)?.razorpayPaymentId || '—'}
+            </p>
           </div>
-
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-              Payment Notes (optional)
-            </label>
-            <input
-              type="text"
-              value={paymentNotes}
-              onChange={e => setPaymentNotes(e.target.value)}
-              placeholder="e.g. Received via GPay to HDFC"
-              className="admin-input w-full rounded px-3 py-2 text-sm"
-            />
+            <span className="block text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted)]">Grand Total</span>
+            <p className="mt-1 text-sm font-bold text-[var(--burgundy)]">
+              ₹{Number(order.grandTotal || 0).toLocaleString('en-IN')}
+            </p>
           </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSavePayment('paid')}
-              disabled={paymentMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-50"
-            >
-              <Check className="h-3.5 w-3.5" /> Mark as Paid
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSavePayment('pending')}
-              disabled={paymentMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
-            >
-              <Clock className="h-3.5 w-3.5" /> Mark as Pending
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => handleSavePayment()}
-            disabled={paymentMut.isPending}
-            className="inline-flex items-center gap-2 rounded bg-[var(--gold)] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          >
-            {paymentMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
-            Save Payment Details
-          </button>
         </div>
       </section>
 
@@ -829,44 +794,83 @@ export default function OrderDetailPage() {
 
       {currentStatus !== 'pending_payment' && (
         <section className="admin-card rounded-lg p-6">
-          <h2 className="mb-6 text-xs font-bold uppercase tracking-[0.16em] text-[var(--burgundy)]">Status Timeline</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+            <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--burgundy)]">Status Timeline</h2>
+            <span className="text-xs text-[var(--muted)]">
+              Follows sequential fulfillment lifecycle (Click highlighted stage to advance)
+            </span>
+          </div>
           
           {/* Horizontal timeline for large screens */}
           <div className="hidden lg:flex items-start justify-between relative px-4 py-4">
-            <div className="absolute top-[18px] left-[6%] right-[6%] h-[3px] bg-[var(--line)] -z-10" />
+            <div className="absolute top-[18px] left-[6%] right-[6%] h-[3px] bg-stone-200 -z-10" />
             
             {pipelineStages.map((stage, idx) => {
               const stageIdx = pipelineStages.findIndex(s => s.key === currentStatus)
-              const isActive = idx <= stageIdx
-              const isCurrent = idx === stageIdx
+              const isPast = stageIdx !== -1 && idx < stageIdx
+              const isCurrent = stage.key === currentStatus
+              const allowedNext = validTransitionsMap[currentStatus] || []
+              const isAllowed = allowedNext.includes(stage.key)
               
               return (
                 <div key={stage.key} className="flex flex-col items-center flex-1 relative group">
-                  {idx > 0 && idx <= stageIdx && (
+                  {idx > 0 && isPast && (
+                    <div className="absolute top-[18px] right-[50%] left-[-50%] h-[3px] bg-green-500 -z-10" />
+                  )}
+                  {idx > 0 && isCurrent && (
                     <div className="absolute top-[18px] right-[50%] left-[-50%] h-[3px] bg-green-500 -z-10" />
                   )}
                   
                   <button
                     type="button"
-                    onClick={() => handleDirectTransition(stage.key)}
-                    title={`Click to set status to ${stage.label}`}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center z-10 transition-all duration-300 cursor-pointer ${
-                      isCurrent ? 'bg-[var(--burgundy)] text-white ring-4 ring-[var(--burgundy-soft)] scale-110'
-                        : isActive ? 'bg-green-600 text-white shadow-md hover:scale-105'
-                        : 'bg-[var(--panel-strong)] text-[var(--muted)] border border-[var(--line)] hover:bg-[var(--burgundy-soft)]'
+                    disabled={!isAllowed && !isCurrent}
+                    onClick={() => {
+                      if (isAllowed) {
+                        handleDirectTransition(stage.key)
+                      }
+                    }}
+                    title={
+                      isCurrent
+                        ? `Current Status: ${stage.label}`
+                        : isAllowed
+                          ? `Click to advance order to ${stage.label}`
+                          : `Stage locked: Complete prior steps first`
+                    }
+                    className={`w-9 h-9 rounded-full flex items-center justify-center z-10 transition-all duration-300 ${
+                      isCurrent
+                        ? 'bg-[var(--burgundy)] text-white ring-4 ring-[var(--burgundy-soft)] scale-110 shadow-md cursor-default'
+                        : isPast
+                          ? 'bg-green-600 text-white shadow-sm'
+                          : isAllowed
+                            ? 'bg-white text-[var(--burgundy)] border-2 border-[var(--burgundy)] hover:bg-[var(--burgundy-soft)] shadow-md cursor-pointer hover:scale-105 animate-pulse'
+                            : 'bg-stone-100 text-stone-300 border border-stone-200 cursor-not-allowed opacity-60'
                     }`}
                   >
-                    <stage.Icon className="h-4.5 w-4.5" />
+                    {isPast ? <Check className="h-4 w-4 stroke-[2.5]" /> : <stage.Icon className="h-4.5 w-4.5" />}
                   </button>
                   
                   <div className="mt-3 text-center">
-                    <p className={`text-xs font-bold transition-colors ${
-                      isCurrent ? 'text-[var(--burgundy)]'
-                        : isActive ? 'text-green-700'
-                        : 'text-[var(--muted)]'
+                    <p className={`text-xs transition-colors ${
+                      isCurrent
+                        ? 'text-[var(--burgundy)] font-extrabold'
+                        : isPast
+                          ? 'text-green-700 font-bold'
+                          : isAllowed
+                            ? 'text-[var(--burgundy)] font-bold'
+                            : 'text-stone-400 font-medium'
                     }`}>
                       {stage.label}
                     </p>
+                    {isCurrent && (
+                      <span className="inline-block mt-0.5 rounded bg-[var(--burgundy)] px-1.5 py-0.2 text-[9px] font-bold text-white uppercase tracking-wider">
+                        Current
+                      </span>
+                    )}
+                    {isAllowed && !isCurrent && (
+                      <span className="inline-block mt-0.5 rounded bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800 uppercase tracking-wider">
+                        Next
+                      </span>
+                    )}
                   </div>
                 </div>
               )
@@ -874,39 +878,59 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Vertical timeline for mobile screens */}
-          <div className="lg:hidden flex flex-col gap-6 pl-4 py-2 relative">
-            <div className="absolute left-[18px] top-4 bottom-4 w-[3px] bg-[var(--line)]" />
+          <div className="lg:hidden flex flex-col gap-5 pl-4 py-2 relative">
+            <div className="absolute left-[18px] top-4 bottom-4 w-[3px] bg-stone-200" />
             
             {pipelineStages.map((stage, idx) => {
               const stageIdx = pipelineStages.findIndex(s => s.key === currentStatus)
-              const isActive = idx <= stageIdx
-              const isCurrent = idx === stageIdx
+              const isPast = stageIdx !== -1 && idx < stageIdx
+              const isCurrent = stage.key === currentStatus
+              const allowedNext = validTransitionsMap[currentStatus] || []
+              const isAllowed = allowedNext.includes(stage.key)
               
               return (
                 <div key={stage.key} className="flex items-center gap-4 relative">
-                  {idx > 0 && idx <= stageIdx && (
-                    <div className="absolute left-[18px] top-[-24px] h-[24px] w-[3px] bg-green-500" />
+                  {idx > 0 && isPast && (
+                    <div className="absolute left-[18px] top-[-20px] h-[20px] w-[3px] bg-green-500" />
+                  )}
+                  {idx > 0 && isCurrent && (
+                    <div className="absolute left-[18px] top-[-20px] h-[20px] w-[3px] bg-green-500" />
                   )}
                   
                   <button
                     type="button"
-                    onClick={() => handleDirectTransition(stage.key)}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 z-10 transition-all duration-300 cursor-pointer ${
-                      isCurrent ? 'bg-[var(--burgundy)] text-white ring-4 ring-[var(--burgundy-soft)] scale-105'
-                        : isActive ? 'bg-green-600 text-white'
-                        : 'bg-[var(--panel-strong)] text-[var(--muted)] border border-[var(--line)]'
+                    disabled={!isAllowed && !isCurrent}
+                    onClick={() => {
+                      if (isAllowed) {
+                        handleDirectTransition(stage.key)
+                      }
+                    }}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 z-10 transition-all duration-300 ${
+                      isCurrent
+                        ? 'bg-[var(--burgundy)] text-white ring-4 ring-[var(--burgundy-soft)] scale-105 shadow'
+                        : isPast
+                          ? 'bg-green-600 text-white'
+                          : isAllowed
+                            ? 'bg-white text-[var(--burgundy)] border-2 border-[var(--burgundy)] shadow'
+                            : 'bg-stone-100 text-stone-300 border border-stone-200 opacity-60'
                     }`}
                   >
-                    <stage.Icon className="h-4.5 w-4.5" />
+                    {isPast ? <Check className="h-4 w-4 stroke-[2.5]" /> : <stage.Icon className="h-4.5 w-4.5" />}
                   </button>
                   
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold truncate ${
-                      isCurrent ? 'text-[var(--burgundy)]'
-                        : isActive ? 'text-green-700'
-                        : 'text-[var(--muted)]'
+                    <p className={`text-sm ${
+                      isCurrent
+                        ? 'text-[var(--burgundy)] font-bold'
+                        : isPast
+                          ? 'text-green-700 font-semibold'
+                          : isAllowed
+                            ? 'text-[var(--burgundy)] font-semibold'
+                            : 'text-stone-400'
                     }`}>
                       {stage.label}
+                      {isCurrent && <span className="ml-2 text-xs font-bold text-[var(--burgundy)]">(Current)</span>}
+                      {isAllowed && !isCurrent && <span className="ml-2 text-xs font-bold text-amber-600">(Next Action)</span>}
                     </p>
                   </div>
                 </div>
@@ -918,90 +942,253 @@ export default function OrderDetailPage() {
 
       {/* Order Actions & Status Controls */}
       <section className="admin-card rounded-lg p-5">
-        <h2 className="mb-4 text-xs font-bold uppercase tracking-[0.16em] text-[var(--burgundy)]">Order Status Controls</h2>
-        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--burgundy)]">Order Status Controls</h2>
+          <span className="text-xs text-[var(--muted)]">
+            Sequential fulfillment: Pending → Confirmed → Packing → Dispatched → Delivered
+          </span>
+        </div>
+
+        {/* Informational Guidance Banners */}
+        {currentStatus === 'pending' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+            <Clock className="h-4 w-4 shrink-0 text-amber-600" />
+            <div>
+              <strong>Order Awaiting Confirmation:</strong> Verify items and customer address, then click <strong>Confirm Order</strong> below to approve for packing.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'confirmed' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3.5 text-xs text-blue-900">
+            <ClipboardCheck className="h-4 w-4 shrink-0 text-blue-600" />
+            <div>
+              <strong>Order Confirmed:</strong> Order is approved. When warehouse begins inventory packing, click <strong>Move to Packing</strong>.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'packing' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 p-3.5 text-xs text-purple-900">
+            <Package className="h-4 w-4 shrink-0 text-purple-600" />
+            <div>
+              <strong>Order in Packing:</strong> Enter Courier Partner and AWB tracking details above, then click <strong>Dispatch Order</strong>.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'dispatched' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3.5 text-xs text-indigo-900">
+            <Truck className="h-4 w-4 shrink-0 text-indigo-600" />
+            <div>
+              <strong>Order Dispatched:</strong> Parcel is in transit with courier. Advance to <strong>Out for Delivery</strong> or <strong>Mark as Delivered</strong> once received.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'out_for_delivery' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+            <Navigation className="h-4 w-4 shrink-0 text-amber-600" />
+            <div>
+              <strong>Out for Delivery:</strong> Courier is attempting delivery. Mark <strong>Delivered</strong> upon handover, or <strong>RTO</strong> if delivery fails.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'delivered' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3.5 text-xs text-green-900">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+            <div>
+              <strong>Delivered:</strong> Customer has successfully received this order.
+            </div>
+          </div>
+        )}
+
+        {currentStatus === 'rto' && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3.5 text-xs text-orange-900">
+            <RotateCcw className="h-4 w-4 shrink-0 text-orange-600" />
+            <div>
+              <strong>Return to Origin (RTO):</strong> Delivery could not be completed and the parcel is being returned.
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
-          {nextAction ? (
+          {/* Primary Forward Action */}
+          {nextAction && currentStatus !== 'cancelled' && currentStatus !== 'delivered' && (
             <button
               type="button"
               onClick={handleAdvance}
               disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-2 rounded bg-[var(--gold)] px-6 py-2.5 text-sm font-bold uppercase tracking-[0.14em] text-white transition-colors hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-6 py-2.5 text-sm font-bold uppercase tracking-[0.12em] text-white transition-all hover:bg-[var(--burgundy-dark)] shadow-sm hover:shadow disabled:opacity-50 cursor-pointer"
             >
               {transitionMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               {nextAction.label}
             </button>
-          ) : null}
+          )}
 
-          {currentStatus !== 'confirmed' && currentStatus !== 'cancelled' && (
+          {/* Contextual Alternative Actions */}
+          {currentStatus === 'dispatched' && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('delivered')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-green-300 bg-green-50 px-4 py-2 text-xs font-bold text-green-800 transition hover:bg-green-100 disabled:opacity-50 cursor-pointer"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Mark Delivered
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('rto')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-bold text-orange-800 transition hover:bg-orange-100 disabled:opacity-50 cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4" /> Mark RTO
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('packing')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-stone-50 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50 cursor-pointer"
+              >
+                Back to Packing
+              </button>
+            </>
+          )}
+
+          {currentStatus === 'out_for_delivery' && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('rto')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-bold text-orange-800 transition hover:bg-orange-100 disabled:opacity-50 cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4" /> Mark RTO
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('dispatched')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-stone-50 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50 cursor-pointer"
+              >
+                Back to Dispatched
+              </button>
+            </>
+          )}
+
+          {currentStatus === 'confirmed' && (
+            <button
+              type="button"
+              onClick={() => handleDirectTransition('pending')}
+              disabled={transitionMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-stone-50 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50 cursor-pointer"
+            >
+              Back to Pending
+            </button>
+          )}
+
+          {currentStatus === 'packing' && (
             <button
               type="button"
               onClick={() => handleDirectTransition('confirmed')}
               disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--gold)] transition hover:bg-[var(--burgundy-soft)] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-stone-50 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50 cursor-pointer"
             >
-              Confirm
+              Back to Confirmed
             </button>
           )}
 
-          {currentStatus !== 'packing' && currentStatus !== 'cancelled' && (
+          {currentStatus === 'rto' && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('returned')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-stone-400 bg-stone-100 px-4 py-2 text-xs font-bold text-stone-800 transition hover:bg-stone-200 disabled:opacity-50 cursor-pointer"
+              >
+                <PackageX className="h-4 w-4" /> Mark Received at Warehouse (Returned)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectTransition('dispatched')}
+                disabled={transitionMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded border border-purple-300 bg-purple-50 px-4 py-2 text-xs font-bold text-purple-800 transition hover:bg-purple-100 disabled:opacity-50 cursor-pointer"
+              >
+                <Truck className="h-4 w-4" /> Re-attempt Dispatch
+              </button>
+            </>
+          )}
+
+          {currentStatus === 'delivered' && (
             <button
               type="button"
-              onClick={() => handleDirectTransition('packing')}
+              onClick={() => handleDirectTransition('returned')}
               disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--gold)] transition hover:bg-[var(--burgundy-soft)] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded border border-stone-400 bg-stone-50 px-4 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50 cursor-pointer"
             >
-              Move to Packing
+              <PackageX className="h-4 w-4" /> Process Return
             </button>
           )}
 
-          {currentStatus !== 'dispatched' && currentStatus !== 'cancelled' && (
-            <button
-              type="button"
-              onClick={() => handleDirectTransition('dispatched')}
-              disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100 disabled:opacity-50"
-            >
-              Dispatch / Ship
-            </button>
-          )}
-
-          {currentStatus !== 'out_for_delivery' && currentStatus !== 'cancelled' && (
-            <button
-              type="button"
-              onClick={() => handleDirectTransition('out_for_delivery')}
-              disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
-            >
-              Out for Delivery
-            </button>
-          )}
-
-          {currentStatus !== 'delivered' && currentStatus !== 'cancelled' && (
-            <button
-              type="button"
-              onClick={() => handleDirectTransition('delivered')}
-              disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-green-200 bg-green-50 px-4 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-50"
-            >
-              Mark Delivered
-            </button>
-          )}
-
-          {currentStatus !== 'cancelled' ? (
+          {/* Cancel Button */}
+          {currentStatus !== 'cancelled' && currentStatus !== 'delivered' && currentStatus !== 'returned' ? (
             <button
               type="button"
               onClick={() => setShowCancelConfirm(true)}
               disabled={transitionMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded border border-red-300 px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded border border-red-300 px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50 cursor-pointer ml-auto"
             >
               <XCircle className="h-4 w-4" /> Cancel Order
             </button>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700">
-              <XCircle className="h-4 w-4" /> Cancelled
-            </span>
+          ) : null}
+
+          {currentStatus === 'cancelled' && (
+            <button
+              type="button"
+              onClick={() => handleDirectTransition('pending')}
+              disabled={transitionMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded border border-stone-400 bg-stone-100 px-4 py-2 text-xs font-bold text-stone-800 transition hover:bg-stone-200 disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCcw className="h-4 w-4" /> Re-open Order (Set to Pending)
+            </button>
           )}
+        </div>
+
+        {/* Customer Email Notification Status Strip */}
+        <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-stone-200 pt-4 bg-[#fffdfa] -mx-5 -mb-5 px-5 py-3 rounded-b-lg border-b">
+          <div className="flex items-center gap-2.5 text-xs text-stone-700">
+            <Mail className="h-4 w-4 text-[var(--burgundy)] shrink-0" />
+            <div>
+              <span className="font-semibold text-stone-900">Email Updates: </span>
+              {(() => {
+                const targetEmail = (
+                  ((customer as any)?.email as string)
+                  || (order?.customerEmail as string)
+                  || ((order?.shippingAddress as any)?.email as string)
+                  || ((order?.metadata as any)?.customerEmail as string)
+                  || ''
+                ).trim()
+
+                return targetEmail ? (
+                  <span>Auto-notifications dispatched to <strong className="text-[var(--burgundy)] font-mono">{targetEmail}</strong> on status change.</span>
+                ) : (
+                  <span className="text-amber-700 font-semibold">No customer email registered on this order.</span>
+                )
+              })()}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleResendStatusEmail}
+            disabled={resendingEmail}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-bold text-stone-800 shadow-2xs hover:border-[var(--burgundy)] hover:text-[var(--burgundy)] transition disabled:opacity-50 cursor-pointer shrink-0"
+          >
+            {resendingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+            {resendingEmail ? 'Sending...' : 'Resend Status Email'}
+          </button>
         </div>
       </section>
 

@@ -1,21 +1,31 @@
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const envUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')
+    const protocol = window.location.protocol || 'http:'
+    const isLanIp = /^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host.endsWith('.local')
+    if (isLanIp) {
+      return `${protocol}//${host}:5005/api`
+    }
+    const isLocal = host === 'localhost' || host === '127.0.0.1'
     if (!isLocal && (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
-      return 'https://aiapi.a1tex.in/api'
+      return 'https://aitexapi.a1tex.in/api'
     }
   }
   return envUrl || 'http://localhost:5005/api'
 }
 
-function getStorefrontBaseUrl(): string {
+export function getStorefrontBaseUrl(): string {
   const envUrl = import.meta.env.VITE_STOREFRONT_URL as string | undefined
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')
-    if (!isLocal && (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1') || envUrl.includes('172.16.'))) {
+    const protocol = window.location.protocol || 'http:'
+    const isLanIp = /^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host.endsWith('.local')
+    if (isLanIp) {
+      return `${protocol}//${host}:3000`
+    }
+    const isLocal = host === 'localhost' || host === '127.0.0.1'
+    if (!isLocal && (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
       return 'https://a1tex.in'
     }
   }
@@ -41,10 +51,10 @@ export function resolveImageUrl(value: unknown) {
     return url
   }
   if (url.startsWith('/uploads/')) {
-    return `${originFromUrl(apiBaseUrl)}${url}`
+    return `${originFromUrl(getApiBaseUrl())}${url}`
   }
   if (url.startsWith('/')) {
-    return `${storefrontBaseUrl.replace(/\/$/, '')}${url}`
+    return `${getStorefrontBaseUrl().replace(/\/$/, '')}${url}`
   }
   return url
 }
@@ -613,6 +623,12 @@ export function updateOrderPayment(
   })
 }
 
+export function resendOrderStatusEmail(id: number | string) {
+  return apiFetch<{ ok: boolean; message: string }>(`/admin/orders/${id}/resend-status-email`, {
+    method: 'POST',
+  })
+}
+
 // ─── Standalone Variants API ────────────────────────────────────
 
 export function listAllVariants(page = 1, perPage = 20, productId?: number, search?: string) {
@@ -622,30 +638,6 @@ export function listAllVariants(page = 1, perPage = 20, productId?: number, sear
   return apiFetch<{ items: Array<Record<string, unknown>>; total: number; page: number; perPage: number; totalPages: number }>(
     `/admin/variants?${params}`,
   )
-}
-
-// ─── Stock Notification API ────────────────────────────────────
-
-export function listStockNotifications(page = 1, perPage = 20, status?: string) {
-  const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
-  if (status) params.set('status', status)
-  return apiFetch<{ items: Array<Record<string, unknown>>; total: number; page: number; perPage: number; totalPages: number }>(
-    `/admin/stock-notifications?${params}`,
-  )
-}
-
-export function markStockNotified(id: number | string) {
-  return apiFetch<{ message: string }>(`/admin/stock-notifications/${id}/mark-notified`, {
-    method: 'POST',
-  })
-}
-
-export function sendStockNotifyMessage(id: number | string, message: string) {
-  return apiFetch<{ message: string; emailSent: boolean; emailError: string | null }>(
-    `/admin/stock-notifications/${id}/send-message`, {
-    method: 'POST',
-    body: JSON.stringify({ message }),
-  })
 }
 
 // ─── Stock API ────────────────────────────────────────────────

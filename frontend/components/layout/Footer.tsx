@@ -20,7 +20,7 @@ import type { MainCategory } from '@/lib/megaMenuData'
 const policyLinks = [
   { label: 'Privacy Policy', href: '/privacy-policy' },
   { label: 'Terms & Conditions', href: '/terms-conditions' },
-  { label: 'Shipping & Refund Policy', href: '/shipping-and-refund' },
+  { label: 'Shipping & Policy', href: '/shipping-and-refund' },
 ]
 
 const infoLinks = [
@@ -54,15 +54,17 @@ function FooterLink({ href, label }: { href: string; label: string }) {
   )
 }
 
-export default function Footer() {
+export default function Footer({ hideMobileNav = false }: { hideMobileNav?: boolean } = {}) {
   const pathname = usePathname()
+  const isProductPage = Boolean(pathname?.startsWith('/products') || pathname?.startsWith('/p/'))
+  const isCheckout = hideMobileNav || Boolean(pathname?.startsWith('/checkout')) || isProductPage
   const { setDrawerOpen, totalItems, hydrated } = useCart()
   const { totalItems: wishlistTotal } = useWishlist()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [menuData, setMenuData] = useState<MainCategory[]>([])
   
   const socials: { Icon: React.ComponentType<{ className?: string }>; href: string; label: string }[] = [
-    { Icon: Instagram, href: 'https://www.instagram.com/a1_textiles/?hl=en', label: 'Instagram' },
+    { Icon: Instagram, href: 'https://www.instagram.com/elampillai_silks?stkn=OGJ3eGRzYmw0OWN1', label: 'Instagram' },
     { Icon: WhatsappIcon, href: 'https://wa.me/919514461405', label: 'WhatsApp' }
   ]
 
@@ -182,103 +184,91 @@ export default function Footer() {
                 </a>
               ))}
             </div>
-            <div className="mt-3">
-              <a
-                href="https://www.instagram.com/a1_textiles/?hl=en"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[12px] font-medium text-[var(--footer-muted)] hover:text-[var(--footer-accent)] transition-colors inline-block"
-              >
-                @a1_textiles
-              </a>
-            </div>
           </div>
         </div>
 
         <div className="mx-auto max-w-[1480px] px-6 pb-3 lg:px-8 xl:px-10">
           <div className="footer-bottom-divider" />
-          <div className="flex flex-col items-center gap-1 text-center sm:flex-row sm:justify-center sm:gap-3">
-            <span className="text-[13px] font-bold tracking-widest">
-              Designed by <a href="https://saitechnosolutions.com/" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--gold)] transition-colors">Sai Techno Solutions</a>
-            </span>
-            <span className="hidden text-[10px] sm:block" style={{ color: 'var(--footer-border)' }}>|</span>
-            <span className="text-[11px]" style={{ color: 'var(--footer-muted)' }}>
-              &copy; 2026
+          <div className="flex flex-col items-center justify-center text-center">
+            <span className="text-[12px] tracking-wider" style={{ color: 'var(--footer-muted)' }}>
+              &copy; 2026 A1 Tex. All rights reserved.
             </span>
           </div>
         </div>
       </footer>
-      <div className="fixed bottom-0 left-0 right-0 w-full z-[100] flex items-center justify-between bg-white/95 px-1 py-1.5 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl border-t border-[var(--ivory-dark)] md:hidden pb-safe">
-        {mobileNavItems.map(({ label, href, action, Icon }) => {
-          const isActive = action === 'cart'
-            ? pathname === '/cart'
-            : href ? (pathname === href || (href !== '/' && (pathname.startsWith(href) || (href === '/shop' && pathname.startsWith('/products'))))) : false;
+      {!isCheckout && (
+        <div className="fixed bottom-0 left-0 right-0 w-full z-[100] flex items-center justify-between bg-white/95 px-1 py-1.5 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl border-t border-[var(--ivory-dark)] md:hidden pb-safe">
+          {mobileNavItems.map(({ label, href, action, Icon }) => {
+            const isActive = action === 'cart'
+              ? pathname === '/cart'
+              : href ? (pathname === href || (href !== '/' && (pathname.startsWith(href) || (href === '/shop' && pathname.startsWith('/products'))))) : false;
 
-          if (action === 'cart') {
+            if (action === 'cart') {
+              return (
+                <button
+                  type="button"
+                  key={label}
+                  onClick={() => setDrawerOpen(true)}
+                  className="group relative flex min-w-0 flex-1 flex-col items-center justify-center pt-2 pb-2 no-underline transition-colors"
+                >
+                  <div className={`flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-[var(--burgundy)]' : 'text-[#666] group-hover:text-[var(--burgundy-dark)]'}`}>
+                    <div className="relative">
+                      <Icon aria-hidden="true" size={22} strokeWidth={isActive ? 2.2 : 1.5} />
+                      {hydrated && totalItems > 0 && (
+                        <span className="absolute -top-1.5 -right-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--burgundy)] px-1 text-[9px] font-bold text-white shadow-sm">
+                          {totalItems}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`max-w-full truncate text-[9px] font-medium tracking-[0.05em] uppercase mt-1 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
+                    {isActive && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded bg-[var(--gold)] shadow-sm" />}
+                  </div>
+                </button>
+              )
+            }
+
+            if (action === 'menu') {
+              return (
+                <button
+                  type="button"
+                  key={label}
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="group relative flex min-w-0 flex-1 flex-col items-center justify-center pt-2 pb-2 no-underline transition-colors"
+                >
+                  <div className="flex flex-col items-center justify-center transition-all duration-300 text-[#666] group-hover:text-[var(--burgundy-dark)]">
+                    <div className="relative">
+                      <Icon aria-hidden="true" size={22} strokeWidth={1.5} />
+                    </div>
+                    <span className="max-w-full truncate text-[9px] font-medium tracking-[0.05em] uppercase mt-1 opacity-70">{label}</span>
+                  </div>
+                </button>
+              )
+            }
+
+            const isWishlist = label === 'Wishlist'
             return (
-              <button
-                type="button"
+              <Link
                 key={label}
-                onClick={() => setDrawerOpen(true)}
+                href={href || '/'}
                 className="group relative flex min-w-0 flex-1 flex-col items-center justify-center pt-2 pb-2 no-underline transition-colors"
               >
                 <div className={`flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-[var(--burgundy)]' : 'text-[#666] group-hover:text-[var(--burgundy-dark)]'}`}>
                   <div className="relative">
                     <Icon aria-hidden="true" size={22} strokeWidth={isActive ? 2.2 : 1.5} />
-                    {hydrated && totalItems > 0 && (
+                    {isWishlist && wishlistTotal > 0 && (
                       <span className="absolute -top-1.5 -right-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--burgundy)] px-1 text-[9px] font-bold text-white shadow-sm">
-                        {totalItems}
+                        {wishlistTotal}
                       </span>
                     )}
                   </div>
                   <span className={`max-w-full truncate text-[9px] font-medium tracking-[0.05em] uppercase mt-1 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
                   {isActive && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded bg-[var(--gold)] shadow-sm" />}
                 </div>
-              </button>
+              </Link>
             )
-          }
-
-          if (action === 'menu') {
-            return (
-              <button
-                type="button"
-                key={label}
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="group relative flex min-w-0 flex-1 flex-col items-center justify-center pt-2 pb-2 no-underline transition-colors"
-              >
-                <div className="flex flex-col items-center justify-center transition-all duration-300 text-[#666] group-hover:text-[var(--burgundy-dark)]">
-                  <div className="relative">
-                    <Icon aria-hidden="true" size={22} strokeWidth={1.5} />
-                  </div>
-                  <span className="max-w-full truncate text-[9px] font-medium tracking-[0.05em] uppercase mt-1 opacity-70">{label}</span>
-                </div>
-              </button>
-            )
-          }
-
-          const isWishlist = label === 'Wishlist'
-          return (
-            <Link
-              key={label}
-              href={href || '/'}
-              className="group relative flex min-w-0 flex-1 flex-col items-center justify-center pt-2 pb-2 no-underline transition-colors"
-            >
-              <div className={`flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-[var(--burgundy)]' : 'text-[#666] group-hover:text-[var(--burgundy-dark)]'}`}>
-                <div className="relative">
-                  <Icon aria-hidden="true" size={22} strokeWidth={isActive ? 2.2 : 1.5} />
-                  {isWishlist && wishlistTotal > 0 && (
-                    <span className="absolute -top-1.5 -right-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--burgundy)] px-1 text-[9px] font-bold text-white shadow-sm">
-                      {wishlistTotal}
-                    </span>
-                  )}
-                </div>
-                <span className={`max-w-full truncate text-[9px] font-medium tracking-[0.05em] uppercase mt-1 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
-                {isActive && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded bg-[var(--gold)] shadow-sm" />}
-              </div>
-            </Link>
-          )
-        })}
-      </div>
+          })}
+        </div>
+      )}
       <MobileNavDrawer 
         isOpen={isMobileMenuOpen} 
         onClose={() => setIsMobileMenuOpen(false)} 

@@ -8,9 +8,9 @@ import { resolveImageUrl } from '@/lib/api/client'
 import type { StorefrontProduct } from '@/lib/api/types'
 
 const placeholders = [
+  'Search by SKU code (e.g. A1-...)...',
   'Search by color - E.g. red color sarees...',
   'Search by Occasions - Marriage, bridal...',
-  'Search by item code (e.g. SAS-KS-0324)...',
   'Search Saree Types - Kanchipuram, Mysore...',
   'Search relevant product names...',
 ]
@@ -314,11 +314,18 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(function SearchBa
                         <p className="truncate text-[11px] md:text-[12px] font-semibold text-[var(--charcoal)] leading-tight">
                           {p.name}
                         </p>
-                        {p.type && (
-                          <p className="mt-0.5 truncate text-[9px] md:text-[10px] text-[var(--muted)]">
-                            {p.type}
-                          </p>
-                        )}
+                        <div className="mt-1 flex items-center gap-1.5 overflow-hidden flex-wrap">
+                          {(p.code || p.variants?.[0]?.sku) && (
+                            <span className="font-mono text-[9px] font-semibold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
+                              SKU: {p.code || p.variants?.[0]?.sku}
+                            </span>
+                          )}
+                          {p.type && (
+                            <span className="truncate text-[9px] md:text-[10px] text-[var(--muted)]">
+                              {p.type}
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-1.5 flex items-center gap-2">
                           <span className="text-[12px] md:text-[13px] font-bold text-[var(--burgundy)]">
                             ₹{p.price.toLocaleString('en-IN')}

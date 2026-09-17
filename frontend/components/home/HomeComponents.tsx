@@ -206,9 +206,9 @@ export function FeaturesStrip() {
       icon: <Clock size={24} className="text-[var(--burgundy)] transition-transform duration-300 group-hover:scale-110" />
     },
     {
-      id: 'worldwide',
-      title: "Worldwide Shipping",
-      description: "Delivered to 50+ countries worldwide",
+      id: 'all_over_india',
+      title: "All Over India Shipping",
+      description: "Safe & insured delivery across all states",
       icon: <Globe size={24} className="text-[var(--burgundy)] transition-transform duration-300 group-hover:scale-110" />
     },
     {

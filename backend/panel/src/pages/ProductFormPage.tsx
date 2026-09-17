@@ -98,6 +98,7 @@ export default function ProductFormPage() {
   const isLoadingItem = isEdit && !stateItem && isFetchingEditItem
 
   // ─── Saree Product Fields ──────────────────────────────────────
+  const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
@@ -113,6 +114,7 @@ export default function ProductFormPage() {
   const [selectedChildId, setSelectedChildId] = useState('')
 
   // ─── First Variant / Price & Inventory Fields ─────────────────
+  const [sku, setSku] = useState('')
   const [variantColorName, setVariantColorName] = useState('Maroon')
   const [variantColorHex, setVariantColorHex] = useState('#800000')
   const [variantPrice, setVariantPrice] = useState('')
@@ -139,6 +141,7 @@ export default function ProductFormPage() {
 
   useEffect(() => {
     if (editItem) {
+      setCode(String(editItem.code || ''))
       setName(String(editItem.name || ''))
       setSlug(String(editItem.slug || ''))
       setDescription(String(editItem.description || ''))
@@ -357,6 +360,7 @@ export default function ProductFormPage() {
     }
 
     const payload: Record<string, unknown> = {
+      code: code.trim() || null,
       name: name.trim(),
       slug: slug || slugify(name),
       description: description.trim() || null,
@@ -393,8 +397,8 @@ export default function ProductFormPage() {
       payload.size = variantSize.trim() || 'Free Size'
       payload.sizes = null
       payload.sizeStock = null
-      // Auto-generated SKU via backend generateSku()
-      payload.sku = null
+      // Auto-generated SKU via backend generateSku() if left blank
+      payload.sku = sku.trim() || null
       payload.lowStockThreshold = parseInt(variantLowStock, 10) || 2
       payload.gstRate = variantGstRate !== '' ? Number(variantGstRate) : 5.00
       payload.variantImageUrl = variantImageUrl || imageUrl || null
@@ -533,18 +537,35 @@ export default function ProductFormPage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-[13px] font-bold uppercase tracking-widest text-[var(--muted)]">
-                  Wash & Care Instructions
-                </label>
-                <input
-                  type="text"
-                  value={washCare}
-                  onChange={e => setWashCare(e.target.value)}
-                  placeholder="Dry clean recommended. Store in a soft cotton cloth or saree bag."
-                  className={getInputClass('washCare')}
-                  maxLength={500}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="block text-[13px] font-bold uppercase tracking-widest text-[var(--muted)]">
+                    Product Code / Item Code <span className="text-[11px] font-normal text-[var(--muted)]">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={e => setCode(e.target.value)}
+                    placeholder="e.g. SAS-KS-0324"
+                    className={`${getInputClass('code')} font-mono`}
+                    maxLength={80}
+                  />
+                  <p className="text-[11px] text-[var(--muted)]">Item code for store search & invoice tracking</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[13px] font-bold uppercase tracking-widest text-[var(--muted)]">
+                    Wash & Care Instructions
+                  </label>
+                  <input
+                    type="text"
+                    value={washCare}
+                    onChange={e => setWashCare(e.target.value)}
+                    placeholder="Dry clean recommended. Store in a soft cotton cloth or saree bag."
+                    className={getInputClass('washCare')}
+                    maxLength={500}
+                  />
+                </div>
               </div>
             </div>
           </SectionCard>
@@ -893,6 +914,22 @@ export default function ProductFormPage() {
                       )
                     })}
                   </div>
+                </div>
+
+                {/* SKU Code (Optional) */}
+                <div className="border-t border-[var(--line)] pt-4 space-y-1.5">
+                  <label className="block text-[13px] font-bold uppercase tracking-widest text-[var(--muted)]">
+                    Variant SKU Code <span className="text-[11px] font-normal text-[var(--muted)]">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={sku}
+                    onChange={e => setSku(e.target.value)}
+                    placeholder="e.g. A1-KS-001 (auto-generated if left empty)"
+                    className={`${getInputClass('sku')} font-mono`}
+                    maxLength={120}
+                  />
+                  <p className="text-[11px] text-[var(--muted)]">Stock Keeping Unit code for barcode, warehouse, and fast search. Auto-generated if blank.</p>
                 </div>
               </div>
             )}

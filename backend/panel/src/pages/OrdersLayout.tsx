@@ -9,7 +9,6 @@ import { useAdminAuth } from '../contexts/AdminAuthContext'
 const ITEMS_PER_PAGE = 20
 
 const stages = [
-  { key: 'pending-payment', label: 'Abandoned Checkouts', status: 'pending_payment' },
   { key: 'pending', label: 'New Orders', status: 'pending' },
   { key: 'confirmed', label: 'Confirmed', status: 'confirmed' },
   { key: 'packing', label: 'Packing', status: 'packing' },
@@ -22,7 +21,6 @@ const stages = [
 ] as const
 
 const stageLabels: Record<string, string> = {
-  'pending-payment': 'Abandoned Checkouts',
   pending: 'New Orders',
   confirmed: 'Confirmed',
   packing: 'Packing',
@@ -35,7 +33,6 @@ const stageLabels: Record<string, string> = {
 }
 
 const stageBadgeClass: Record<string, string> = {
-  'pending-payment': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
   pending: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   confirmed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   packing: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
@@ -263,12 +260,6 @@ export default function OrdersLayout() {
         })}
       </div>
 
-      {activeTab === 'pending-payment' && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
-          Customers who reached checkout but did not complete their order. No stock was deducted. These stay here until you cancel them manually — they do not auto-expire.
-        </div>
-      )}
-
       {/* Table */}
       <section className="admin-card overflow-hidden rounded-lg">
         {!isLoading && items.length > 0 ? (
@@ -286,38 +277,36 @@ export default function OrdersLayout() {
               <span className="text-[var(--text)]">{totalItems}</span>{' '}
               {totalItems === 1 ? 'record' : 'records'}
             </p>
-            {activeTab !== 'pending-payment' ? (
-              <div className="flex items-center gap-2">
-                {canManageInvoices && activeTab === 'dispatched' ? (
-                  <button
-                    type="button"
-                    onClick={() => downloadDispatchedCodPendingInvoicesPdf().catch(() => {})}
-                    className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
-                  >
-                    <Download className="h-4 w-4" />
-                    Print COD Pending Invoices
-                  </button>
-                ) : null}
-                {canManageInvoices ? (
-                  <button
-                    type="button"
-                    onClick={() => downloadStageInvoicesPdf(activeTab).catch(() => {})}
-                    className="inline-flex items-center gap-2 rounded bg-[var(--gold)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
-                  >
-                    <Download className="h-4 w-4" />
-                    Print All Invoices
-                  </button>
-                ) : null}
+            <div className="flex items-center gap-2">
+              {canManageInvoices && activeTab === 'dispatched' ? (
                 <button
                   type="button"
-                  onClick={() => downloadStageAddressesPdf(activeTab).catch(() => {})}
+                  onClick={() => downloadDispatchedCodPendingInvoicesPdf().catch(() => {})}
                   className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
                 >
                   <Download className="h-4 w-4" />
-                  Download All Addresses
+                  Print COD Pending Invoices
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+              {canManageInvoices ? (
+                <button
+                  type="button"
+                  onClick={() => downloadStageInvoicesPdf(activeTab).catch(() => {})}
+                  className="inline-flex items-center gap-2 rounded bg-[var(--gold)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
+                >
+                  <Download className="h-4 w-4" />
+                  Print All Invoices
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => downloadStageAddressesPdf(activeTab).catch(() => {})}
+                className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
+              >
+                <Download className="h-4 w-4" />
+                Download All Addresses
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -326,10 +315,8 @@ export default function OrdersLayout() {
             <thead className="border-b border-[var(--line)] bg-[var(--panel-strong)] text-[13.5px] font-bold uppercase tracking-wider text-[var(--muted)]">
               <tr>
                 <th className="px-5 py-3.5 font-bold">S.No</th>
-                {activeTab !== 'pending-payment' ? (
-                  <th className="px-5 py-3.5 font-bold">Order ID</th>
-                ) : null}
-                <th className="px-5 py-3.5 font-bold">{activeTab === 'pending-payment' ? 'Checkout Cancelled' : 'Ordered Date'}</th>
+                <th className="px-5 py-3.5 font-bold">Order ID</th>
+                <th className="px-5 py-3.5 font-bold">Ordered Date</th>
                 <th className="px-5 py-3.5 font-bold">Name</th>
                 <th className="px-5 py-3.5 font-bold">Payment</th>
                 <th className="px-5 py-3.5 font-bold">Method</th>
@@ -368,11 +355,9 @@ export default function OrdersLayout() {
                     className="admin-table-row border-b border-[var(--line)] last:border-0"
                   >
                     <td className="px-5 py-4 text-[var(--muted)] font-semibold">{serialNo}</td>
-                    {activeTab !== 'pending-payment' ? (
-                      <td className="px-5 py-4 font-mono text-sm font-bold text-[var(--burgundy)]">
-                        {String(item.orderNumber || '')}
-                      </td>
-                    ) : null}
+                    <td className="px-5 py-4 font-mono text-sm font-bold text-[var(--burgundy)]">
+                      {String(item.orderNumber || '')}
+                    </td>
                     <td className="px-5 py-4 text-[var(--text)]">
                       {formatDate(item.createdAt)}
                     </td>
@@ -450,7 +435,7 @@ export default function OrdersLayout() {
 
               {!items.length && !isLoading ? (
                 <tr>
-                  <td colSpan={activeTab === 'pending-payment' ? 9 : 10} className="px-5 py-16 text-center">
+                  <td colSpan={10} className="px-5 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--burgundy-soft)]">
                         <ShoppingBag className="h-7 w-7 text-[var(--burgundy)]" />

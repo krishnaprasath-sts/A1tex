@@ -90,8 +90,8 @@ export default function CategoriesPage() {
 
   // Quick toggle mutation for navVisible / active
   const toggleMutation = useMutation({
-    mutationFn: ({ id, field, value, item }: { id: number; field: string; value: boolean; item: any }) => {
-      return updateResource('categories', id, { ...item, [field]: value })
+    mutationFn: ({ id, field, value }: { id: number; field: string; value: boolean; item?: any }) => {
+      return updateResource('categories', id, { [field]: value })
     },
     onSuccess: () => {
       setTogglingId(null)

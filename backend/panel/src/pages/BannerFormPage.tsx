@@ -62,6 +62,7 @@ export default function BannerFormPage() {
   const [active, setActive] = useState(true)
 
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [initializedId, setInitializedId] = useState<string | null>(null)
   
   // Image Upload State
   const fileRef = useRef<HTMLInputElement>(null)
@@ -69,7 +70,7 @@ export default function BannerFormPage() {
   const [uploadError, setUploadError] = useState('')
 
   useEffect(() => {
-    if (editItem && !touched.initialized) {
+    if (editItem && initializedId !== (id || 'new')) {
       setPlacement(String(editItem.placement || 'home_hero'))
       setTitle(String(editItem.title || ''))
       setSubtitle(String(editItem.subtitle || ''))
@@ -78,9 +79,9 @@ export default function BannerFormPage() {
       setCtaUrl(String(editItem.ctaUrl || ''))
       setSortOrder(String(editItem.sortOrder ?? '0'))
       setActive(Boolean(editItem.active ?? true))
-      setTouched({ initialized: true })
+      setInitializedId(id || 'new')
     }
-  }, [editItem, touched.initialized])
+  }, [editItem, id, initializedId])
 
   const saveMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => {

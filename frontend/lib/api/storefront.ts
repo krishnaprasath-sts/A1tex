@@ -1,8 +1,7 @@
 import { apiFetch } from './client'
 import type { CanReviewResponse, MarqueeMessageData, NavigationResponse, Review, ReviewSubmission, ReviewSummary, StorefrontHomeData, StorefrontProduct } from './types'
 
-// Short in-memory cache (2s) to deduplicate simultaneous component requests during a page render
-// while reflecting admin panel changes immediately on refresh/navigation
+// In-memory cache for ultra-fast storefront navigation (60s TTL)
 const cacheMap = new Map<string, { data: any; expiry: number }>()
 
 function getCached<T>(key: string): T | null {
@@ -15,7 +14,7 @@ function getCached<T>(key: string): T | null {
   return item.data as T
 }
 
-function setCache<T>(key: string, data: T, ttlMs = 2000): T {
+function setCache<T>(key: string, data: T, ttlMs = 60000): T {
   cacheMap.set(key, { data, expiry: Date.now() + ttlMs })
   return data
 }
@@ -30,7 +29,7 @@ export async function fetchAnnouncementMessages() {
 
   try {
     const data = await apiFetch<{ messages: Array<{ id?: number; text: string; linkUrl?: string | null }> }>('/storefront/announcement-bar')
-    return setCache('announcement_messages', data.messages || [], 2000)
+    return setCache('announcement_messages', data.messages || [], 60000)
   } catch {
     return []
   }
@@ -42,7 +41,7 @@ export async function fetchNavigation() {
 
   try {
     const data = await apiFetch<NavigationResponse>('/storefront/nav-menu')
-    return setCache('nav_menu', data.navigation || [], 2000)
+    return setCache('nav_menu', data.navigation || [], 60000)
   } catch {
     return []
   }
@@ -54,7 +53,7 @@ export async function fetchMarqueeMessages() {
 
   try {
     const data = await apiFetch<{ messages: MarqueeMessageData[] }>('/storefront/marquee-messages')
-    return setCache('marquee_messages', data.messages || [], 2000)
+    return setCache('marquee_messages', data.messages || [], 60000)
   } catch {
     return []
   }
@@ -104,11 +103,17 @@ export async function searchStorefront(query: string) {
 }
 
 export async function fetchCategoryBySlug(slug: string) {
+  const cached = getCached<{ id: number; name: string; slug: string; href: string }>(`cat_${slug}`)
+  if (cached) return cached
+
   try {
     const data = await apiFetch<{ category: { id: number; name: string; slug: string; href: string } }>(
       `/storefront/categories/by-slug/${encodeURIComponent(slug)}`,
     )
-    return data.category || null
+    if (data.category) {
+      return setCache(`cat_${slug}`, data.category, 60000)
+    }
+    return null
   } catch {
     return null
   }
@@ -121,6 +126,10 @@ export async function fetchProducts(opts: {
   gender?: string
   search?: string
 } = {}): Promise<StorefrontProduct[]> {
+  const cacheKey = `prods_${JSON.stringify(opts)}`
+  const cached = getCached<StorefrontProduct[]>(cacheKey)
+  if (cached) return cached
+
   try {
     const params = new URLSearchParams()
     if (opts.section) params.set('section', opts.section)
@@ -132,7 +141,22 @@ export async function fetchProducts(opts: {
     const data = await apiFetch<{ products: StorefrontProduct[] }>(
       `/storefront/products${qs ? `?${qs}` : ''}`,
     )
-    return data.products || []
+    const prods = data.products || []
+    return setCache(cacheKey, prods, 30000)
+  } catch {
+    return []
+  }
+}
+
+export async function fetchRelatedProducts(productId: number | string): Promise<StorefrontProduct[]> {
+  const cacheKey = `related_${productId}`
+  const cached = getCached<StorefrontProduct[]>(cacheKey)
+  if (cached) return cached
+
+  try {
+    const data = await apiFetch<{ products?: StorefrontProduct[] }>(`/storefront/products/${productId}/related`)
+    const prods = data.products || []
+    return setCache(cacheKey, prods, 60000)
   } catch {
     return []
   }
@@ -176,9 +200,15 @@ export async function submitReview(productId: number, data: ReviewSubmission, im
 }
 
 export async function fetchProductBySlug(slug: string): Promise<StorefrontProduct | null> {
+  const cached = getCached<StorefrontProduct>(`prod_${slug}`)
+  if (cached) return cached
+
   try {
     const data = await apiFetch<{ product: StorefrontProduct }>(`/storefront/products/${encodeURIComponent(slug)}`)
-    return data.product || null
+    if (data.product) {
+      return setCache(`prod_${slug}`, data.product, 60000)
+    }
+    return null
   } catch {
     return null
   }

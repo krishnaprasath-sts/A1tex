@@ -10,7 +10,6 @@ import * as navigationController from './controllers/navigation.controller.js'
 import * as catalogController from './controllers/catalog.controller.js'
 import * as orderController from './controllers/order.controller.js'
 import * as reviewController from './controllers/review.controller.js'
-import * as stockNotificationController from './controllers/stock-notification.controller.js'
 import { getShippingCharge } from './controllers/shipping-charge.controller.js'
 
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads')
@@ -115,9 +114,6 @@ router.get('/products/:slug/reviews', asyncHandler(reviewController.getProductRe
 router.get('/products/:productId/can-review', requireCustomerAuth, asyncHandler(reviewController.canReviewProduct))
 router.post('/products/:productId/reviews', requireCustomerAuth, upload.array('images', 5), asyncHandler(reviewController.createProductReview))
 
-/* ── Stock Notification Routes ─── */
-router.post('/stock-notify', asyncHandler(stockNotificationController.create))
-
 /* ── Unsubscribe Routes ─── */
 router.post('/unsubscribe', asyncHandler(async (req, res) => {
   const { email } = req.body
@@ -155,6 +151,18 @@ router.post('/contact-enquiries', asyncHandler(async (req, res) => {
     phonenumber: phonenumber.trim(),
     message: message.trim(),
   })
+
+  try {
+    const { sendContactNotificationEmail } = await import('../../services/email.service.js')
+    await sendContactNotificationEmail({
+      name: name.trim(),
+      email: email.trim(),
+      phonenumber: phonenumber.trim(),
+      message: message.trim(),
+    })
+  } catch (err) {
+    console.error('[Contact] Failed to send email:', err)
+  }
 
   res.json({ success: true, message: 'Your enquiry has been submitted successfully.' })
 }))

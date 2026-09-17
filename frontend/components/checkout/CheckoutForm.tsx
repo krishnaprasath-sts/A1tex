@@ -168,7 +168,6 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
   async function calculateShipping(pin?: string, stateOverride?: string) {
     const activePin = pin !== undefined ? pin : pincode
     const activeState = stateOverride !== undefined ? stateOverride : state
-    if ((!activePin || activePin.length < 6) && !activeState) return
     if (checkoutItems.length === 0) return
     setDeliveryChecking(true)
 
@@ -181,11 +180,11 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
         {
           method: 'POST',
           body: JSON.stringify({
-            pincode: activePin,
-            state: activeState,
+            pincode: activePin && activePin.length >= 6 ? activePin : undefined,
+            state: activeState || undefined,
             items: checkoutItems.map(i => ({ weight: (i as any).weightKg ?? 0.5, quantity: i.qty })),
             subtotal: checkoutSubtotal,
-            cod: paymentMethod === 'cod',
+            cod: false,
           }),
         },
       )
@@ -256,11 +255,14 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pincode])
 
-  // Recalculate shipping when payment method changes (COD vs online affects rates)
+
+  // Load initial shipping courier options so they are visible right away
   useEffect(() => {
-    if (pincode.length === 6) calculateShipping(pincode)
+    if (checkoutItems.length > 0 && courierOptions.length === 0) {
+      calculateShipping(pincode, state)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentMethod])
+  }, [checkoutItems.length, activeStep])
 
   // Update shipping when free shipping threshold is crossed
   useEffect(() => {
@@ -279,36 +281,53 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
 
   function loadRazorpayScript(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (window.Razorpay) return resolve()
+      if (typeof window !== 'undefined' && (window as any).Razorpay) return resolve()
+
+      const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')
+      if (existingScript) {
+        let attempts = 0
+        const interval = setInterval(() => {
+          if ((window as any).Razorpay) {
+            clearInterval(interval)
+            resolve()
+          } else if (++attempts > 40) {
+            clearInterval(interval)
+            reject(new Error('Razorpay SDK load timed out. Please check your internet connection.'))
+          }
+        }, 100)
+        return
+      }
 
       const script = document.createElement('script')
       script.src = 'https://checkout.razorpay.com/v1/checkout.js'
       script.async = true
 
-      const timeout = setTimeout(() => reject(new Error('Razorpay SDK load timed out')), 10000)
+      const timeout = setTimeout(() => reject(new Error('Razorpay SDK load timed out. Please refresh and try again.')), 10000)
 
       script.onload = () => { clearTimeout(timeout); resolve() }
-      script.onerror = () => { clearTimeout(timeout); reject(new Error('Failed to load Razorpay SDK')) }
+      script.onerror = () => { clearTimeout(timeout); reject(new Error('Failed to load Razorpay payment gateway.')) }
 
       document.body.appendChild(script)
     })
   }
 
   async function handleRazorpayPayment(body: Record<string, unknown>): Promise<{ order: { id: number }; guestToken?: string }> {
-    const razorpayData = await apiFetch<{ razorpayOrderId: string | null; amount: number; currency: string; orderId: number; status?: string; guestToken?: string }>(
+    const razorpayData = await apiFetch<{ keyId?: string; razorpayOrderId: string | null; amount: number; currency: string; orderId: number; status?: string; guestToken?: string }>(
       '/storefront/orders/create-razorpay-order',
       { method: 'POST', body: JSON.stringify(body) },
     )
 
     if (!razorpayData.razorpayOrderId) {
-      return { order: { id: razorpayData.orderId }, guestToken: razorpayData.guestToken }
+      throw new Error('Unable to initialize secure online payment gateway. Please try again.')
     }
 
     await loadRazorpayScript()
 
+    const activeKeyId = razorpayData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+
     return new Promise<{ order: { id: number }; guestToken?: string }>((resolve, reject) => {
-      const rzp = new window.Razorpay({
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      const rzpInstance = new (window as any).Razorpay({
+        key: activeKeyId,
         amount: razorpayData.amount,
         currency: razorpayData.currency || 'INR',
         name: 'A1 TEX',
@@ -336,21 +355,36 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
         },
         modal: {
           ondismiss: function () {
-            reject(new Error('Payment cancelled'))
+            reject(new Error('Payment was cancelled.'))
           },
         },
         prefill: {
+          name: [firstName, lastName].filter(Boolean).join(' ') || undefined,
           email: email || undefined,
           contact: phone || undefined,
         },
-        theme: { color: '#8B1A2B' },
+        theme: { color: '#8B1A1A' },
       })
-      rzp.open()
+
+      if (typeof rzpInstance.on === 'function') {
+        rzpInstance.on('payment.failed', function (response: any) {
+          const reason = response?.error?.description || response?.error?.reason || 'Payment failed. Please try another card or UPI method.'
+          reject(new Error(reason))
+        })
+      }
+
+      rzpInstance.open()
     })
   }
 
   const handlePlaceOrder = async () => {
     setError(null)
+
+    if (!isShippingValid()) {
+      setError('Please fill in all required shipping address fields before proceeding.')
+      setActiveStep('shipping')
+      return
+    }
 
     // Block if delivery is not serviceable to this pincode
     if (deliveryInfo && !deliveryInfo.available) {
@@ -363,18 +397,22 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
 
     const body: Record<string, unknown> = {
       paymentMethod: 'online',
-      items: checkoutItems.map((item: any) => ({
-        productId: typeof item.id === 'number' ? item.id : Number(item.id) || undefined,
-        variantId: item.variantId,
-        name: item.name,
-        variantLabel: item.variantLabel,
-        color: item.color,
-        size: item.size,
-        imageUrl: item.image,
-        quantity: Number(item.qty),
-        unitPrice: Number(item.price),
-        total: Number(item.price) * Number(item.qty),
-      })),
+      items: checkoutItems.map((item: any) => {
+        const prodId = typeof item.id === 'number' ? item.id : (Number(item.id) || (item.productId ? Number(item.productId) : undefined))
+        const varId = item.variantId ? (typeof item.variantId === 'number' ? item.variantId : Number(item.variantId) || undefined) : undefined
+        return {
+          productId: prodId,
+          variantId: varId,
+          name: item.name,
+          variantLabel: item.variantLabel,
+          color: item.color,
+          size: item.size,
+          imageUrl: item.image,
+          quantity: Number(item.qty || 1),
+          unitPrice: Number(item.price),
+          total: Number(item.price) * Number(item.qty || 1),
+        }
+      }),
       customerEmail: email || undefined,
       shippingAddress: {
         firstName,
@@ -681,7 +719,12 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
                   type="text"
                   placeholder="State *"
                   value={state}
-                  onChange={e => { setState(e.target.value); if (shipTouched.state) setShipErrors(p => ({ ...p, state: validateShipField('state', e.target.value) })) }}
+                  onChange={e => {
+                    const val = e.target.value
+                    setState(val)
+                    if (shipTouched.state) setShipErrors(p => ({ ...p, state: validateShipField('state', val) }))
+                    calculateShipping(pincode, val)
+                  }}
                   onBlur={() => handleShipBlur('state')}
                   className={`w-full rounded-xl shadow-xs border px-4 py-3 text-sm outline-none transition focus:border-[#8B1A1A] focus:ring-2 focus:ring-[#8B1A1A]/20 bg-white ${shipTouched.state && shipErrors.state ? 'border-red-400' : 'border-slate-200'}`}
                 />
@@ -736,12 +779,12 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
               </div>
             </div>
 
-            {/* Courier Selection Dropdown & Options */}
+            {/* Courier Selection Cards */}
             {courierOptions.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-slate-200/70 space-y-3">
+              <div className="mt-5 pt-4 border-t border-slate-200/70 space-y-2.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Select Courier Partner *
+                    Select Courier Partner <span className="text-red-500">*</span>
                   </label>
                   <button
                     type="button"
@@ -749,52 +792,39 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8B1A1A] hover:underline cursor-pointer"
                   >
                     <Truck className="h-3.5 w-3.5" />
-                    <span>Calculate / View Shipping Breakdown</span>
+                    <span>View Full Shipping Breakdown</span>
                   </button>
                 </div>
 
-                {/* Dropdown Field */}
-                <select
-                  value={selectedCourierCode}
-                  onChange={e => handleSelectCourier(e.target.value)}
-                  className="w-full rounded-xl shadow-xs border border-slate-200 px-4 py-3 text-sm font-semibold outline-none transition focus:border-[#8B1A1A] focus:ring-2 focus:ring-[#8B1A1A]/20 bg-white text-slate-800"
-                >
-                  {courierOptions.map(c => (
-                    <option key={c.id} value={c.code}>
-                      {c.name} — {c.rate === 0 ? 'FREE Shipping' : `₹${c.rate}`} ({c.estimatedDays})
-                    </option>
-                  ))}
-                </select>
-
-                {/* Quick Selection Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {/* Interactive Selection Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   {courierOptions.map(c => {
                     const isSelected = c.code === selectedCourierCode
                     return (
                       <div
                         key={c.id}
                         onClick={() => handleSelectCourier(c.code)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between shadow-2xs ${
                           isSelected
-                            ? 'border-[#8B1A1A] bg-[#FDF6F0]/60 ring-1 ring-[#8B1A1A]'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            ? 'border-[#8B1A1A] bg-[#FDF6F0]/80 ring-2 ring-[#8B1A1A]/30'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-3">
                           <input
                             type="radio"
                             name="courier_option"
                             checked={isSelected}
                             onChange={() => handleSelectCourier(c.code)}
-                            className="accent-[#8B1A1A]"
+                            className="h-4 w-4 accent-[#8B1A1A] cursor-pointer"
                           />
                           <div>
-                            <p className="text-xs font-bold text-slate-900">{c.name}</p>
-                            <p className="text-[11px] text-slate-500">{c.estimatedDays}</p>
+                            <p className="text-xs font-bold text-slate-900 leading-snug">{c.name}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{c.estimatedDays}</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className={`text-xs font-bold ${c.rate === 0 ? 'text-emerald-700 font-extrabold' : 'text-slate-900'}`}>
+                        <div className="text-right pl-2">
+                          <span className={`text-xs font-bold ${c.rate === 0 ? 'text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200' : 'text-slate-900'}`}>
                             {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
                           </span>
                         </div>

@@ -3,8 +3,25 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
+import fs from 'node:fs'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') })
+const rootDir = path.resolve(__dirname, '..', '..')
+
+// Load .env files in priority order: .env.production -> .env (root & cwd)
+const envPaths = [
+  path.resolve(rootDir, '.env.production'),
+  path.resolve(process.cwd(), '.env.production'),
+  path.resolve(rootDir, '.env'),
+  path.resolve(process.cwd(), '.env'),
+]
+
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: false })
+  }
+}
+dotenv.config() // Fallback default load
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

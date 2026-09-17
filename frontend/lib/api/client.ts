@@ -1,20 +1,33 @@
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const isServer = typeof window === 'undefined'
   if (!isServer) {
     const host = window.location.hostname
-    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')
-    if (isLocal) {
+    const protocol = window.location.protocol || 'http:'
+
+    // If accessing via Wi-Fi/LAN IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x, or .local)
+    const isLanIp = /^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || host.endsWith('.local')
+    if (isLanIp) {
+      return `${protocol}//${host}:5005/api`
+    }
+
+    if (host === 'localhost' || host === '127.0.0.1') {
       const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
-      if (envUrl && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1') || envUrl.includes('192.168.'))) {
+      if (envUrl && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
         return envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/$/, '')}/api`
       }
       return 'http://localhost:5005/api'
     }
+
+    // Production or remote domains (e.g. a1tex.in, vercel.app, etc.)
+    const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/$/, '')}/api`
+    }
   }
 
   let url = isServer
-    ? (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:5005/api' : 'https://aiapi.a1tex.in/api'))
-    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://aiapi.a1tex.in/api')
+    ? (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:5005/api' : 'https://aitexapi.a1tex.in/api'))
+    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://aitexapi.a1tex.in/api')
 
   if (!url.endsWith('/api') && !url.includes('/api/')) {
     url = `${url.replace(/\/$/, '')}/api`
@@ -29,11 +42,12 @@ type ApiOptions = RequestInit & {
 }
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const baseUrl = getApiBaseUrl()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 7000)
 
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${baseUrl}${path}`, {
       ...options,
       cache: options.cache || 'no-store',
       credentials: 'include',
@@ -64,7 +78,7 @@ export function resolveImageUrl(url: string | null | undefined): string | undefi
   // Only prepend backend base URL for uploaded files
   // Paths like /categories/*, /saree*.png, etc. are served from Next.js public/
   if (url.startsWith('/uploads/')) {
-    const base = apiBaseUrl.replace(/\/api$/, '')
+    const base = getApiBaseUrl().replace(/\/api$/, '')
     return `${base}${url}`
   }
   // All other relative paths are Next.js public folder assets — return as-is

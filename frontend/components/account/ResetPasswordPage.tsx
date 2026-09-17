@@ -43,9 +43,9 @@ export default function ResetPasswordPage() {
         </section>
 
         <section className="relative border-x border-b border-t-[4px] border-[#EAD3CE] bg-white p-5 shadow-[0_10px_32px_rgba(0,0,0,0.05)] sm:p-8 lg:p-10">
-          <div className="pointer-events-none absolute inset-2 border border-[#A34336]/10" />
+          <div className="pointer-events-none absolute inset-2 border border-[#8B1A1A]/10" />
           <div className="relative z-10 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#A34336]/10 text-[#A34336]">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#8B1A1A]/10 text-[#8B1A1A]">
               <LockKeyhole className="h-6 w-6" />
             </div>
             <h2 className="font-playfair mb-2 text-2xl sm:text-3xl font-medium italic tracking-wide text-[#333333]">Use OTP to Reset</h2>
@@ -54,17 +54,17 @@ export default function ResetPasswordPage() {
             </p>
             <Link
               href="/forgot-password"
-              className="inline-flex items-center justify-center rounded-md bg-[#A34336] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#8e382b]"
+              className="inline-flex items-center justify-center rounded-md bg-[#8B1A1A] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#721226]"
             >
               Go to Forgot Password
             </Link>
           </div>
 
           <div className="mt-7 flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-5 text-sm text-[#666666] sm:flex-row">
-            <Link href="/login" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+            <Link href="/login" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
               Back to sign in
             </Link>
-            <Link href="/register" className="font-medium text-[#A34336] underline-offset-4 hover:underline">
+            <Link href="/register" className="font-medium text-[#8B1A1A] underline-offset-4 hover:underline">
               Create new account
             </Link>
           </div>

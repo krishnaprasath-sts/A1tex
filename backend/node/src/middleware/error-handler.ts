@@ -17,11 +17,15 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     })
   }
 
-  if (error instanceof AppError) {
-    return res.status(error.statusCode).json({ message: error.message })
+  if (error instanceof AppError || (error && typeof error === 'object' && ('statusCode' in error || (error as any).name === 'AppError'))) {
+    const statusCode = Number((error as any).statusCode) || 500
+    return res.status(statusCode).json({
+      message: error.message || 'Request failed',
+      ...(error.message ? { detail: error.message } : {}),
+    })
   }
 
-  // Sequelize unique constraint violation
+  // Sequelize errors
   if (error && typeof error === 'object' && 'name' in error) {
     const errName = (error as any).name as string
     if (errName === 'SequelizeUniqueConstraintError') {
@@ -41,6 +45,13 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
           : `Invalid reference: the associated ${table} does not exist or cannot be linked.`,
       })
     }
+    if (errName === 'SequelizeDatabaseError') {
+      console.error('[DatabaseError]', (error as any).message, (error as any).parent?.sqlMessage)
+      return res.status(500).json({
+        message: 'Database operation failed.',
+        detail: (error as any).parent?.sqlMessage || (error as any).message,
+      })
+    }
   }
 
   if (error && typeof error === 'object' && 'code' in error && typeof (error as any).code === 'string') {
@@ -50,9 +61,9 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     }
   }
 
-  console.error(error)
+  console.error('[UnhandledError]', error)
   return res.status(500).json({
-    message: 'Internal server error',
-    ...(env.NODE_ENV === 'development' ? { detail: String(error?.message ?? error) } : {}),
+    message: (error as any)?.message || 'Internal server error',
+    detail: String((error as any)?.message ?? error),
   })
 }

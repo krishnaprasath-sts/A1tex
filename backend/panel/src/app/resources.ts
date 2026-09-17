@@ -9,6 +9,7 @@ import {
   Layers,
   ListTree,
   Megaphone,
+  MessageSquare,
   Package,
   ScrollText,
   Settings,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Truck,
   Users,
+  UserCheck,
   XCircle,
   Mail,
   Shield,
@@ -86,17 +88,17 @@ export const sidebarItems: SidebarEntry[] = [
       { path: '/products', label: 'Products', Icon: ShoppingBag, permission: 'manage_products' },
       { path: '/variants', label: 'Variants', Icon: Layers, permission: 'manage_products' },
       { path: '/stock', label: 'Stock', Icon: ClipboardList, permission: 'manage_stock' },
+      { path: '/reviews', label: 'Reviews & Ratings', Icon: MessageSquare, permission: 'manage_products' },
     ],
   },
-  { path: '/customers', label: 'Customers', Icon: Users },
-  { path: '/coupons', label: 'Coupons', Icon: BadgePercent },
-  { path: '/guest-coupon', label: 'Guest Coupon', Icon: BadgePercent },
-  { path: '/invoices', label: 'Invoices', Icon: ClipboardList },
+  { path: '/customers', label: 'Customers', Icon: Users, permission: 'manage_customers' },
+  { path: '/coupons', label: 'Coupons', Icon: BadgePercent, permission: 'manage_coupons' },
+  { path: '/guest-coupon', label: 'Guest Discount Popup', Icon: BadgePercent, permission: 'manage_settings' },
+  { path: '/invoices', label: 'Invoices', Icon: ClipboardList, permission: 'manage_invoices' },
   {
     label: 'Orders',
     Icon: ShoppingBag,
     children: [
-      { path: '/orders/pending-payment', label: 'Abandoned Checkouts', Icon: ShoppingBag, badgeKey: 'pending-payment' },
       { path: '/orders/pending', label: 'New Orders', Icon: ShoppingBag, badgeKey: 'pending' },
       { path: '/orders/confirmed', label: 'Confirmed', Icon: Package, badgeKey: 'confirmed' },
       { path: '/orders/packing', label: 'Packing', Icon: Package, badgeKey: 'packing' },
@@ -108,8 +110,24 @@ export const sidebarItems: SidebarEntry[] = [
       { path: '/orders/returned', label: 'Returned', Icon: Truck, badgeKey: 'returned' },
     ],
   },
-  { path: '/enquiries', label: 'Contact Enquiries', Icon: Mail },
-  { path: '/shipping-zones', label: 'Shipping Zones & Rates', Icon: Truck, permission: 'manage_settings' },
+  {
+    label: 'Marketing',
+    Icon: Send,
+    children: [
+      { path: '/email-campaigns', label: 'Email Campaigns', Icon: Mail, permission: 'manage_email_campaigns' },
+      { path: '/enquiries', label: 'Contact Enquiries', Icon: Mail, permission: 'manage_customers' },
+    ],
+  },
+  {
+    label: 'Settings & Team',
+    Icon: Settings,
+    children: [
+      { path: '/settings', label: 'Free Shipping Rules', Icon: Settings, permission: 'manage_settings' },
+      { path: '/shipping-zones', label: 'Shipping Zones & Rates', Icon: Truck, permission: 'manage_settings' },
+      { path: '/staff', label: 'Staff Management', Icon: UserCheck, permission: 'manage_staff' },
+      { path: '/roles', label: 'Roles & Permissions', Icon: Shield, permission: 'manage_roles' },
+    ],
+  },
 ]
 
 export const resources: ResourceConfig[] = [
@@ -170,13 +188,14 @@ export const resources: ResourceConfig[] = [
     Icon: Boxes,
     columns: ['id', 'section', 'name', 'navVisible', 'homeVisible', 'headerHighlight', 'active'],
     fields: [
-      { name: 'section', label: 'Section', kind: 'select', options: ['collections', 'shop-by', 'browse-all', 'collections-for'], required: true },
+      { name: 'section', label: 'Section', kind: 'text' },
       { name: 'name', label: 'Name', required: true },
-      { name: 'href', label: 'Storefront Link', required: true },
+      { name: 'href', label: 'Storefront Link' },
       {
         name: 'imageUrl',
         label: 'Category Image',
         kind: 'image',
+        required: true,
         dimensionHint: 'category-card',
         dimensionLabel: 'Upload your category image (any aspect ratio supported).',
       },
@@ -232,7 +251,7 @@ export const resources: ResourceConfig[] = [
     Icon: Users,
     columns: ['name', 'email', 'mobile'],
     hideSerialNumber: false,
-    hideActions: false,
+    hideActions: true,
     hideEdit: true,
     hideAddNew: true,
     fields: [

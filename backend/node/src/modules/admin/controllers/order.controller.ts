@@ -37,17 +37,17 @@ export const statusMap: Record<string, { status: string }> = {
 }
 
 export const validTransitions: Record<string, string[]> = {
-  pending_payment: ['pending', 'confirmed', 'packing', 'dispatched', 'out_for_delivery', 'delivered', 'cancelled'],
-  pending: ['pending_payment', 'confirmed', 'packing', 'dispatched', 'out_for_delivery', 'delivered', 'cancelled'],
-  confirmed: ['pending', 'packing', 'dispatched', 'out_for_delivery', 'delivered', 'cancelled'],
-  packing: ['confirmed', 'dispatched', 'out_for_delivery', 'delivered', 'cancelled'],
-  dispatched: ['packing', 'out_for_delivery', 'delivered', 'cancelled', 'rto', 'returned'],
-  shipped: ['packing', 'dispatched', 'out_for_delivery', 'delivered', 'cancelled', 'rto', 'returned'],
-  out_for_delivery: ['dispatched', 'delivered', 'cancelled', 'rto', 'returned'],
-  delivered: ['returned', 'rto', 'out_for_delivery', 'dispatched', 'packing', 'confirmed'],
-  rto: ['returned', 'cancelled', 'dispatched', 'delivered'],
-  returned: ['delivered', 'cancelled'],
-  cancelled: ['pending', 'confirmed', 'packing', 'dispatched'],
+  pending_payment: ['pending', 'confirmed', 'cancelled'],
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['pending', 'packing', 'cancelled'],
+  packing: ['confirmed', 'dispatched', 'cancelled'],
+  dispatched: ['packing', 'out_for_delivery', 'delivered', 'rto', 'cancelled'],
+  shipped: ['packing', 'out_for_delivery', 'delivered', 'rto', 'cancelled'],
+  out_for_delivery: ['dispatched', 'delivered', 'rto', 'cancelled'],
+  delivered: ['returned', 'rto'],
+  rto: ['returned', 'dispatched', 'cancelled'],
+  returned: ['cancelled'],
+  cancelled: ['pending'],
 }
 
 // Hands a coupon back when an order stops being a sale.
@@ -350,66 +350,76 @@ export const transitionOrder = async (req: Request, res: Response) => {
   })
   const plainOrder = freshOrder?.get({ plain: true }) as Record<string, unknown> | undefined
   if (plainOrder) {
-    const custEmail = (
+    let custEmail = (
       ((plainOrder.Customer as Record<string, unknown> | undefined)?.email as string)
       || (plainOrder.customerEmail as string)
+      || ((plainOrder as any).customer_email as string)
       || ((plainOrder.shippingAddress as Record<string, unknown> | undefined)?.email as string)
       || ((plainOrder.metadata as Record<string, unknown> | undefined)?.customerEmail as string)
+      || ((plainOrder.metadata as Record<string, unknown> | undefined)?.email as string)
       || ''
     ).trim()
 
-    console.log(`[Order ${plainOrder.orderNumber}] Status transition: ${currentStatus} → ${finalStatus} | Customer email: "${custEmail || 'NOT FOUND'}"`)
+    if (!custEmail && plainOrder.customerId) {
+      const c = await Customer.findByPk(plainOrder.customerId as number)
+      if (c) {
+        custEmail = String((c as any).email || '').trim()
+      }
+    }
+
+    const normalizedStatus = String(finalStatus || '').toLowerCase().replace(/-/g, '_')
+    console.log(`[Order ${plainOrder.orderNumber}] Status transition: ${currentStatus} → ${finalStatus} (normalized: ${normalizedStatus}) | Customer email: "${custEmail || 'NOT FOUND'}"`)
 
     if (custEmail) {
-      if (finalStatus === 'confirmed') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending order confirmation email...`)
+      if (normalizedStatus === 'confirmed') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending order confirmation email to ${custEmail}...`)
         sendOrderConfirmationEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Confirmation email failed:`, err.message)
         })
-      } else if (finalStatus === 'pending' && currentStatus === 'pending_payment') {
+      } else if (normalizedStatus === 'pending' && currentStatus === 'pending_payment') {
         // COD confirmation: send order confirmation email
-        console.log(`[Order ${plainOrder.orderNumber}] Sending COD confirmation email...`)
+        console.log(`[Order ${plainOrder.orderNumber}] Sending COD confirmation email to ${custEmail}...`)
         sendOrderConfirmationEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] COD confirmation email failed:`, err.message)
         })
-      } else if (finalStatus === 'packing' || finalStatus === 'processing') {
+      } else if (normalizedStatus === 'packing' || normalizedStatus === 'processing') {
         // "Your order is being packed / processed" notification
-        console.log(`[Order ${plainOrder.orderNumber}] Sending packing notification email...`)
+        console.log(`[Order ${plainOrder.orderNumber}] Sending packing notification email to ${custEmail}...`)
         sendPackingEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Packing email failed:`, err.message)
         })
-      } else if (finalStatus === 'dispatched') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending shipping email...`)
+      } else if (normalizedStatus === 'dispatched' || normalizedStatus === 'shipped') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending shipping email to ${custEmail}...`)
         sendShippingEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Shipping email failed:`, err.message)
         })
-      } else if (finalStatus === 'delivered') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending delivery email...`)
+      } else if (normalizedStatus === 'delivered') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending delivery email to ${custEmail}...`)
         sendDeliveryEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Delivery email failed:`, err.message)
         })
-      } else if (finalStatus === 'cancelled') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending cancellation email...`)
+      } else if (normalizedStatus === 'cancelled') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending cancellation email to ${custEmail}...`)
         sendCancellationEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Cancellation email failed:`, err.message)
         })
-      } else if (finalStatus === 'out_for_delivery') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending out-for-delivery email...`)
+      } else if (normalizedStatus === 'out_for_delivery') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending out-for-delivery email to ${custEmail}...`)
         sendOutForDeliveryEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Out-for-delivery email failed:`, err.message)
         })
-      } else if (finalStatus === 'rto') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending RTO email...`)
+      } else if (normalizedStatus === 'rto') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending RTO email to ${custEmail}...`)
         sendRtoEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] RTO email failed:`, err.message)
         })
-      } else if (finalStatus === 'returned') {
-        console.log(`[Order ${plainOrder.orderNumber}] Sending returned email...`)
+      } else if (normalizedStatus === 'returned') {
+        console.log(`[Order ${plainOrder.orderNumber}] Sending returned email to ${custEmail}...`)
         sendReturnedEmail(custEmail, plainOrder).catch((err: any) => {
           console.error(`[Order ${plainOrder.orderNumber}] Returned email failed:`, err.message)
         })
       } else {
-        console.log(`[Order ${plainOrder.orderNumber}] No email trigger for status: ${finalStatus}`)
+        console.log(`[Order ${plainOrder.orderNumber}] No email trigger for status: ${finalStatus} (${normalizedStatus})`)
       }
     } else {
       console.warn(`[Order ${plainOrder.orderNumber}] No customer email found — skipping notification`)
@@ -419,6 +429,58 @@ export const transitionOrder = async (req: Request, res: Response) => {
   }
 
   res.json({ item: order.get({ plain: true }) })
+}
+
+export const resendOrderStatusEmail = async (req: Request, res: Response) => {
+  const { id } = idParam.parse(req.params)
+  const order = await Order.findByPk(id, {
+    include: [{ model: OrderItem, as: 'items' }, { model: Customer }],
+  })
+  if (!order) throw new AppError(404, 'Order not found.')
+
+  const plainOrder = order.get({ plain: true }) as Record<string, unknown>
+  let custEmail = (
+    ((plainOrder.Customer as Record<string, unknown> | undefined)?.email as string)
+    || (plainOrder.customerEmail as string)
+    || ((plainOrder as any).customer_email as string)
+    || ((plainOrder.shippingAddress as Record<string, unknown> | undefined)?.email as string)
+    || ((plainOrder.metadata as Record<string, unknown> | undefined)?.customerEmail as string)
+    || ((plainOrder.metadata as Record<string, unknown> | undefined)?.email as string)
+    || ''
+  ).trim()
+
+  if (!custEmail && plainOrder.customerId) {
+    const c = await Customer.findByPk(plainOrder.customerId as number)
+    if (c) {
+      custEmail = String((c as any).email || '').trim()
+    }
+  }
+
+  if (!custEmail) throw new AppError(400, 'No customer email address found on this order.')
+
+  const currentStatus = String(plainOrder.status || 'pending').toLowerCase().replace(/-/g, '_')
+
+  if (currentStatus === 'confirmed' || currentStatus === 'pending') {
+    await sendOrderConfirmationEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'packing' || currentStatus === 'processing') {
+    await sendPackingEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'dispatched' || currentStatus === 'shipped') {
+    await sendShippingEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'out_for_delivery') {
+    await sendOutForDeliveryEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'delivered') {
+    await sendDeliveryEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'rto') {
+    await sendRtoEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'returned') {
+    await sendReturnedEmail(custEmail, plainOrder)
+  } else if (currentStatus === 'cancelled') {
+    await sendCancellationEmail(custEmail, plainOrder)
+  } else {
+    throw new AppError(400, `No status email available for status '${currentStatus}'.`)
+  }
+
+  res.json({ ok: true, message: `Status update notification (${currentStatus}) sent to ${custEmail}` })
 }
 
 

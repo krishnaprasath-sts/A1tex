@@ -1,16 +1,18 @@
+import Script from 'next/script'
 import CheckoutForm from '@/components/checkout/CheckoutForm'
 import OrderSummary from '@/components/checkout/OrderSummary'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import FloatingActions from '@/components/ui/FloatingActions'
 import { CheckoutProvider } from '@/components/checkout/CheckoutContext'
-import { ShieldCheck, Lock, Truck, RefreshCw } from 'lucide-react'
+import { ShieldCheck, Lock, Truck, Sparkles } from 'lucide-react'
 
 export default function CheckoutPage({ searchParams }: { searchParams?: { buyNow?: string } }) {
   const isBuyNow = !!searchParams?.buyNow
 
   return (
     <CheckoutProvider>
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
       <Header />
 
       {/* Security Assurance Banner */}
@@ -23,13 +25,13 @@ export default function CheckoutPage({ searchParams }: { searchParams?: { buyNow
           <div className="hidden md:flex items-center gap-6 text-slate-600 text-[11px] uppercase tracking-wider">
             <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#8B1A1A]" /> 100% Genuine Handloom Silk</span>
             <span className="flex items-center gap-1.5"><Truck size={14} className="text-[#8B1A1A]" /> Fast Insured Shipping</span>
-            <span className="flex items-center gap-1.5"><RefreshCw size={14} className="text-[#8B1A1A]" /> Easy 7-Day Returns</span>
+            <span className="flex items-center gap-1.5"><Sparkles size={14} className="text-[#8B1A1A]" /> 100% Quality Inspected</span>
           </div>
         </div>
       </div>
 
       {/* Main Checkout Content */}
-      <main className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 relative">
+      <main className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 relative pb-24 sm:pb-12">
         <div className="relative mx-auto max-w-7xl flex flex-col-reverse lg:flex-row gap-8 lg:gap-12 px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           
           {/* Left Column: Form Flow */}
@@ -47,7 +49,7 @@ export default function CheckoutPage({ searchParams }: { searchParams?: { buyNow
         </div>
       </main>
 
-      <Footer />
+      <Footer hideMobileNav={true} />
       <FloatingActions />
     </CheckoutProvider>
   )

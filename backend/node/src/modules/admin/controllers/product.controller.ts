@@ -10,14 +10,13 @@ import {
   ProductVariant,
   VariantImage,
   ProductImage,
-  StockNotification,
   Order,
   OrderItem,
 } from '../../../models/index.js'
 import { sequelize } from '../../../database/sequelize.js'
 import { writeAuditLog } from '../../../services/audit.service.js'
 import { AppError } from '../../../utils/http.js'
-import { sendBackInStockEmail } from '../../../services/email.service.js'
+import { slugify } from '../../../utils/slug.js'
 import {
   DIMENSION_RULES,
   validateImageDimensions,
@@ -37,7 +36,7 @@ function generateSku(): string {
 // ─── Validation Schemas ─────────────────────────────────────────
 export const productCreateSchema = z.object({
   code: z.union([z.string().max(80), z.null()]).optional(),
-  name: z.string().min(3, 'Product name must be at least 3 characters.').max(45, 'Product name cannot exceed 45 characters.'),
+  name: z.string().min(3, 'Product name must be at least 3 characters.').max(180, 'Product name cannot exceed 180 characters.'),
   slug: z.string().max(220).optional().default(''),
   type: z.union([z.string().max(180), z.null()]).optional(),
   description: z.union([z.string(), z.null()]).optional(),
@@ -69,7 +68,7 @@ export const productCreateSchema = z.object({
   // First variant fields (used by createProduct to create the default variant)
   variantType: z.enum(['color', 'size']).optional().default('color'),
   variantLabel: z.string().max(120).optional().default('Default'),
-  colorName: z.union([z.string().min(3, 'Color name must be at least 3 characters.').max(30, 'Color name cannot exceed 30 characters.'), z.null()]).optional(),
+  colorName: z.union([z.string().min(1, 'Color name must be at least 1 character.').max(80, 'Color name cannot exceed 80 characters.'), z.null()]).optional(),
   colorHex: z.union([z.string().regex(/^#[0-9A-Fa-f]{3,8}$/), z.null()]).optional(),
   size: z.union([z.string().max(40), z.null()]).optional(),
   sku: z.union([z.string().max(120), z.null()]).optional(),
@@ -81,7 +80,7 @@ export const productCreateSchema = z.object({
 export const variantCreateSchema = z.object({
   variantType: z.enum(['color', 'size']).optional().default('color'),
   label: z.union([z.string().max(120), z.null()]).optional(),
-  colorName: z.union([z.string().min(3, 'Color name must be at least 3 characters.').max(30, 'Color name cannot exceed 30 characters.'), z.null()]).optional(),
+  colorName: z.union([z.string().min(1, 'Color name must be at least 1 character.').max(80, 'Color name cannot exceed 80 characters.'), z.null()]).optional(),
   colorHex: z.union([z.string().regex(/^#[0-9A-Fa-f]{3,8}$/), z.null()]).optional(),
   size: z.union([z.string().max(40), z.null()]).optional(),
   sku: z.union([z.string().max(120), z.null()]).optional(),
@@ -147,33 +146,6 @@ export const updateProductStock = async (productId: number, options?: { transact
     updateData,
     { where: { id: productId }, ...options }
   )
-}
-
-async function triggerStockNotifications(productId: number, variantId?: number) {
-  const product = await Product.findByPk(productId, { attributes: ['name'] })
-  if (!product) return
-
-  const where: any = { productId, status: 'pending' }
-  if (variantId) where.variantId = variantId
-
-  const pending = await StockNotification.findAll({ where })
-  if (pending.length === 0) return
-
-  for (const n of pending) {
-    try {
-      await sendBackInStockEmail(
-        n.getDataValue('email') as string,
-        n.getDataValue('customerName') as string | undefined,
-        {
-          productName: n.getDataValue('productName') as string,
-          variantLabel: n.getDataValue('variantLabel') as string | null,
-        },
-      )
-      await n.update({ status: 'notified', notifiedAt: new Date() })
-    } catch (err: any) {
-      console.error(`[StockNotify] Failed to notify ${n.getDataValue('email')}:`, err.message)
-    }
-  }
 }
 
 function normalizeVariantPart(value: unknown) {
@@ -542,16 +514,25 @@ export const getAllVariants = async (req: Request, res: Response) => {
   const search = req.query.search ? String(req.query.search).trim() : ''
 
   const where: any = productId ? { productId } : {}
-  const productWhere: any = {}
 
   if (search) {
+    const matchingProducts = await Product.findAll({
+      where: {
+        [Op.or]: [
+          { name: { [Op.like]: `%${search}%` } },
+          { code: { [Op.like]: `%${search}%` } },
+        ],
+      },
+      attributes: ['id'],
+      raw: true,
+    }) as any[]
+    const productIdsFromSearch = matchingProducts.map(p => p.id)
+
     where[Op.or] = [
       { label: { [Op.like]: `%${search}%` } },
       { sku: { [Op.like]: `%${search}%` } },
-    ]
-    productWhere[Op.or] = [
-      { name: { [Op.like]: `%${search}%` } },
-      { code: { [Op.like]: `%${search}%` } },
+      { colorName: { [Op.like]: `%${search}%` } },
+      ...(productIdsFromSearch.length > 0 ? [{ productId: { [Op.in]: productIdsFromSearch } }] : []),
     ]
   }
 
@@ -559,7 +540,7 @@ export const getAllVariants = async (req: Request, res: Response) => {
     ProductVariant.findAll({
       where,
       include: [
-        { model: Product, required: true, attributes: ['id', 'name', 'code', 'imageUrl', 'categoryId', 'gender'], where: Object.keys(productWhere).length ? productWhere : undefined },
+        { model: Product, required: true, attributes: ['id', 'name', 'code', 'imageUrl', 'categoryId', 'gender'] },
         { model: VariantImage, as: 'images', attributes: ['id', 'imageUrl', 'sortOrder'], order: [['sortOrder', 'ASC']] },
       ],
       order: [['id', 'DESC']],
@@ -689,12 +670,6 @@ export const updateStockBatch = async (req: Request, res: Response) => {
       const productId = Number(variant.getDataValue('productId'))
       await updateProductStock(productId, { transaction: t })
 
-      if (oldStockQty <= 0 && u.stockQty > 0) {
-        triggerStockNotifications(productId, u.variantId).catch(err =>
-          console.error('[StockNotify] Batch trigger error:', err.message)
-        )
-      }
-
       auditDetails.push({
         variantId: u.variantId,
         before: { stockQty: beforeStock, lowStockThreshold: beforeThreshold },
@@ -736,12 +711,6 @@ export const adjustStock = async (req: Request, res: Response) => {
 
     return { variant: variant.get({ plain: true }), before: beforeStock, after: newStock, productId }
   })
-
-  if (result.before <= 0 && result.after > 0) {
-    triggerStockNotifications(result.productId, variantId).catch(err =>
-      console.error('[StockNotify] Adjust trigger error:', err.message)
-    )
-  }
 
   await writeAuditLog({
     adminId: adminId(req),
@@ -859,9 +828,20 @@ export const reorderProductImages = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
   const body = productCreateSchema.parse(req.body)
+  const slug = body.slug && body.slug.trim() ? slugify(body.slug) : slugify(body.name)
+  const productPayload = { ...body, slug }
 
   const result = await sequelize.transaction(async (t) => {
-    const product = await Product.create(body, { transaction: t })
+    if (body.code) {
+      const existingCode = await Product.findOne({ where: { code: body.code.trim() }, transaction: t })
+      if (existingCode) throw new AppError(422, `Product code "${body.code}" already exists.`)
+    }
+    if (body.sku) {
+      const existingSku = await ProductVariant.findOne({ where: { sku: body.sku.trim() }, transaction: t })
+      if (existingSku) throw new AppError(422, `SKU "${body.sku}" already exists.`)
+    }
+
+    const product = await Product.create(productPayload, { transaction: t })
 
     const variant = await ProductVariant.create({
       productId: product.getDataValue('id'),
@@ -1454,12 +1434,6 @@ export const importVariants = async (req: Request, res: Response) => {
 
   for (const pid of productsToSync) {
     await updateProductStock(pid)
-  }
-
-  for (const cv of createdVariants) {
-    triggerStockNotifications(cv.productId, cv.variantId).catch(err =>
-      console.error('[StockNotify] Import trigger error:', err.message)
-    )
   }
 
   await writeAuditLog({

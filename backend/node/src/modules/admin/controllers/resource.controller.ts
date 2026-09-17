@@ -24,9 +24,6 @@ import { writeAuditLog } from '../../../services/audit.service.js'
 import { expireOldCoupons } from '../../../services/coupon-expiry.service.js'
 import { AppError } from '../../../utils/http.js'
 import { slugify } from '../../../utils/slug.js'
-import { triggerPriceDropNotification } from '../../../services/price-drop.service.js'
-import { sendBackInStockEmail, sendNotifyMessageEmail } from '../../../services/email.service.js'
-import { StockNotification } from '../../../models/index.js'
 import { syncInvoiceStatus } from '../../../services/invoice.service.js'
 import { invalidateCompanyCache, invalidateShippingCache, invalidateGuestDiscountPopupCache, invalidateCourierCache } from '../../../services/settings.service.js'
 import {
@@ -38,13 +35,15 @@ import { UPLOADS_DIR } from './upload.controller.js'
 import { adminId, paginationSchema, idParam } from './utils.js'
 import { productCreateSchema } from './product.controller.js'
 
+import { clearNavCache } from '../../storefront/controllers/navigation.controller.js'
+
 export type ResourceConfig = {
   model: any
   entity: string
   writable: string[]
   imageFields?: string[]
   defaultOrder?: [string, string][]
-  beforeSave?: (body: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
+  beforeSave?: (body: Record<string, unknown>, req?: Request) => Record<string, unknown> | Promise<Record<string, unknown>>
   validationSchema?: z.ZodType<any>
   deleteGuard?: (id: string) => Promise<string | null>
   onBeforeDelete?: (id: string) => Promise<void>
@@ -53,17 +52,21 @@ export type ResourceConfig = {
 }
 
 export const categoryCreateSchema = z.object({
-  parentId: z.union([z.number().int().positive(), z.null()]).optional(),
-  section: z.string().min(1, 'Section is required.').max(80, 'Section is too long.'),
+  parentId: z.union([
+    z.coerce.number().int().positive(),
+    z.literal(''),
+    z.null(),
+  ]).optional().transform(v => (v === '' || !v ? null : Number(v))),
+  section: z.string().max(80, 'Section is too long.').optional().nullable(),
   name: z.string().min(2, 'Category name must be at least 2 characters.').max(140, 'Category name cannot exceed 140 characters.'),
-  slug: z.string().max(180).optional().default(''),
-  href: z.string().min(1, 'Storefront link is required.').max(255, 'Storefront link is too long.'),
-  imageUrl: z.union([z.string().max(255), z.null()]).optional(),
+  slug: z.string().max(180).optional().nullable(),
+  href: z.string().max(255).optional().nullable(),
+  imageUrl: z.string().min(1, 'Category image is required.').max(255),
   tag: z.union([z.string().max(80), z.null()]).optional(),
   navVisible: z.boolean().optional().default(true),
   homeVisible: z.boolean().optional().default(true),
   headerHighlight: z.boolean().optional().default(false),
-  sortOrder: z.number().int().min(0, 'Sort order must be 0 or greater.').optional().default(0),
+  sortOrder: z.coerce.number().int().min(0, 'Sort order must be 0 or greater.').optional().default(0),
   active: z.boolean().optional().default(true),
   metadata: z.any().optional(),
 })
@@ -73,6 +76,17 @@ export const contactEnquirySchema = z.object({
   email: z.string().email('Invalid email address.').max(190, 'Email is too long.'),
   phonenumber: z.string().min(10, 'Phone number must be at least 10 digits.').max(32, 'Phone number is too long.'),
   message: z.string().min(5, 'Message must be at least 5 characters.').max(2000, 'Message is too long.'),
+})
+
+export const bannerCreateSchema = z.object({
+  placement: z.string().min(1, 'Placement is required.').max(80),
+  title: z.string().max(180).optional().nullable(),
+  subtitle: z.string().max(500).optional().nullable(),
+  imageUrl: z.string({ required_error: 'Banner image is required.' }).min(1, 'Banner image is required.').max(255),
+  ctaLabel: z.string().max(80).optional().nullable(),
+  ctaUrl: z.string().max(255).optional().nullable(),
+  sortOrder: z.coerce.number().int().default(0),
+  active: z.boolean().default(true),
 })
 
 export const resourceConfig: Record<string, ResourceConfig> = {
@@ -101,6 +115,7 @@ export const resourceConfig: Record<string, ResourceConfig> = {
     writable: ['placement', 'title', 'subtitle', 'imageUrl', 'ctaLabel', 'ctaUrl', 'sortOrder', 'active'],
     imageFields: ['imageUrl'],
     defaultOrder: [['sortOrder', 'ASC'], ['id', 'ASC']],
+    validationSchema: bannerCreateSchema,
   },
   categories: {
     model: Category,
@@ -109,12 +124,49 @@ export const resourceConfig: Record<string, ResourceConfig> = {
     imageFields: ['imageUrl'],
     defaultOrder: [['sortOrder', 'ASC'], ['id', 'ASC']],
     validationSchema: categoryCreateSchema,
-    beforeSave: body => {
-      const slug = body.slug ? slugify(String(body.slug)) : slugify(String(body.name || ''))
+    beforeSave: async (body, req) => {
+      const parentId = body.parentId ? Number(body.parentId) : null
+      let baseSlug = body.slug ? slugify(String(body.slug)) : slugify(String(body.name || ''))
+      if (!baseSlug) baseSlug = 'category'
+
+      let slug = baseSlug
+      let counter = 1
+      const updateId = req?.params?.id ? Number(req.params.id) : (body.id ? Number(body.id) : null)
+      while (true) {
+        const existing = await Category.findOne({
+          where: {
+            slug,
+            ...(updateId ? { id: { [Op.ne]: updateId } } : {}),
+          },
+          paranoid: false,
+        })
+        if (!existing) break
+        counter++
+        slug = `${baseSlug}-${counter}`
+      }
+
+      let section = body.section ? String(body.section).trim() : ''
+      if (!section) {
+        if (parentId) {
+          const parent = await Category.findByPk(parentId)
+          section = parent ? String(parent.get('section') || parent.get('name')) : String(body.name || '')
+        } else {
+          section = String(body.name || '')
+        }
+      }
+
+      const isBrowseAll = slug === 'browse-all' || String(body.name || '').toLowerCase().trim() === 'browse all'
+      const href = body.href && String(body.href).trim()
+        ? String(body.href).trim()
+        : (isBrowseAll ? '/shop' : (parentId ? `/shop?category=${slug}` : `/shop?section=${slug}`))
+
       return {
         ...body,
+        parentId,
+        section,
         slug,
-        navVisible: body.navVisible !== undefined ? body.navVisible : true,
+        href,
+        navVisible: body.navVisible !== undefined ? Boolean(body.navVisible) : true,
       }
     },
     useForceDelete: true,
@@ -136,14 +188,18 @@ export const resourceConfig: Record<string, ResourceConfig> = {
           const fp = filePathFromUrl(child.imageUrl, UPLOADS_DIR)
           if (fp) cleanupFile(fp)
         }
-        const childProducts = await Product.findAll({ where: { categoryId: child.id } }) as any[]
+        const childProducts = await Product.findAll({
+          where: { [Op.or]: [{ categoryId: child.id }, { subCategoryId: child.id }] },
+        }) as any[]
         for (const product of childProducts) {
           await cascadeDeleteProduct(product.id)
         }
         await Category.destroy({ where: { id: child.id }, force: true })
       }
 
-      const parentProducts = await Product.findAll({ where: { categoryId: numId } }) as any[]
+      const parentProducts = await Product.findAll({
+        where: { [Op.or]: [{ categoryId: numId }, { subCategoryId: numId }] },
+      }) as any[]
       for (const product of parentProducts) {
         await cascadeDeleteProduct(product.id)
       }
@@ -181,6 +237,7 @@ export const resourceConfig: Record<string, ResourceConfig> = {
     entity: 'customer',
     writable: ['name', 'email', 'mobile', 'status', 'emailVerified'],
     defaultOrder: [['id', 'DESC']],
+    deleteGuard: async () => 'Customer accounts cannot be deleted.',
     onBeforeDelete: async (id: string) => {
       const numId = Number(id)
       await CouponCustomer.destroy({ where: { customerId: numId } }).catch(() => {})
@@ -289,12 +346,11 @@ async function cascadeDeleteProduct(productId: number) {
     await ProductVariant.destroy({ where: { productId } })
   }
   await ProductImage.destroy({ where: { productId } })
-  await StockNotification.destroy({ where: { productId } })
   await WishlistItem.destroy({ where: { productId } })
   await Product.destroy({ where: { id: productId }, force: true })
 }
 
-export async function pickWritable(body: Record<string, unknown>, config: ResourceConfig) {
+export async function pickWritable(body: Record<string, unknown>, config: ResourceConfig, req?: Request) {
   const picked: Record<string, unknown> = {}
   for (const field of config.writable) {
     if (field in body) {
@@ -303,7 +359,7 @@ export async function pickWritable(body: Record<string, unknown>, config: Resour
       picked[field] = val
     }
   }
-  return config.beforeSave ? await config.beforeSave(picked) : picked
+  return config.beforeSave ? await config.beforeSave(picked, req) : picked
 }
 
 // Replaces a coupon's eligible-customer list wholesale. An empty array means
@@ -424,10 +480,19 @@ export const listResource = async (req: Request, res: Response) => {
 
   const where: any = {}
   if (resource === 'products' && search) {
+    const variantMatches = await ProductVariant.findAll({
+      where: { sku: { [Op.like]: `%${search}%` } },
+      attributes: ['productId'],
+      limit: 60,
+      raw: true,
+    }) as any[]
+    const variantProductIds = Array.from(new Set(variantMatches.map(v => v.productId).filter(Boolean)))
+
     where[Op.or] = [
-      { name: { [Op.like]: `%${search}%` } },
       { code: { [Op.like]: `%${search}%` } },
+      { name: { [Op.like]: `%${search}%` } },
       { type: { [Op.like]: `%${search}%` } },
+      ...(variantProductIds.length > 0 ? [{ id: { [Op.in]: variantProductIds } }] : []),
     ]
   }
 
@@ -490,8 +555,12 @@ export const createResource = async (req: Request, res: Response) => {
     config.validationSchema.parse(req.body)
   }
 
-  const body = await pickWritable(req.body, config)
+  const body = await pickWritable(req.body, config, req)
   const row = await config.model.create(body)
+
+  if (resource === 'categories' || resource === 'announcement-messages' || resource === 'marquee-messages') {
+    clearNavCache()
+  }
 
   if (resource === 'coupons' && Array.isArray(req.body.customerIds)) {
     await syncCouponEligibility(Number(row.get('id')), req.body.customerIds)
@@ -578,7 +647,7 @@ export const updateResource = async (req: Request, res: Response) => {
   if (!row) throw new AppError(404, 'Item not found.')
 
   const oldImageUrls = collectImageUrls(row, config)
-  const body = await pickWritable(req.body, config)
+  const body = await pickWritable(req.body, config, req)
 
   // Capture old values before update (for price drop & stock auto-notify)
   const oldPriceValue = config.entity === 'product' && body.price != null
@@ -591,6 +660,10 @@ export const updateResource = async (req: Request, res: Response) => {
   await cleanOrphanFiles(oldImageUrls, body, config)
 
   await row.update(body)
+
+  if (resource === 'categories' || resource === 'announcement-messages' || resource === 'marquee-messages') {
+    clearNavCache()
+  }
 
   // Sync updated product fields to its default variant so storefront maps the new price/stock immediately
   if (config.entity === 'product') {
@@ -615,49 +688,6 @@ export const updateResource = async (req: Request, res: Response) => {
 
   if (resource === 'coupons' && Array.isArray(req.body.customerIds)) {
     await syncCouponEligibility(Number(id), req.body.customerIds)
-  }
-
-  // ─── Price Drop Email Notification ──────────────────────
-  if (config.entity === 'product' && body.price != null) {
-    const newPrice = Number(body.price)
-    if (oldPriceValue > 0 && newPrice < oldPriceValue) {
-      const productName = String(row.getDataValue('name') || '')
-      const imageUrl = row.getDataValue('imageUrl') as string | null
-      const slug = row.getDataValue('slug') as string | null
-      triggerPriceDropNotification(
-        Number(id), productName, oldPriceValue, newPrice, adminId(req) ?? null, imageUrl, slug,
-      ).catch(err => console.error('[PriceDrop] Trigger error:', err))
-    }
-  }
-
-  // ─── Auto-notify stock notification subscribers when stock added ──
-  if (config.entity === 'product') {
-    const newStockQty = Number(row.getDataValue('stockQty') ?? 0)
-    if (oldStockQty <= 0 && newStockQty > 0) {
-      const pendingNotifications = await StockNotification.findAll({
-        where: { productId: Number(id), status: 'pending' },
-      })
-
-      for (const n of pendingNotifications) {
-        try {
-          await sendBackInStockEmail(
-            n.getDataValue('email') as string,
-            n.getDataValue('customerName') as string | undefined,
-            {
-              productName: n.getDataValue('productName') as string,
-              variantLabel: n.getDataValue('variantLabel') as string | null,
-            },
-          )
-          await n.update({ status: 'notified', notifiedAt: new Date() })
-        } catch (err: any) {
-          console.error(`[StockNotify] Failed to notify ${n.getDataValue('email')}:`, err.message)
-        }
-      }
-
-      if (pendingNotifications.length > 0) {
-        console.log(`[StockNotify] Notified ${pendingNotifications.length} subscribers for product ${id}`)
-      }
-    }
   }
 
   if (config.entity === 'order') {
@@ -759,6 +789,10 @@ export const deleteResource = async (req: Request, res: Response) => {
     if (settingKey === 'guest_discount_popup') {
       invalidateGuestDiscountPopupCache()
     }
+  }
+
+  if (resource === 'categories' || resource === 'announcement-messages' || resource === 'marquee-messages') {
+    clearNavCache()
   }
 
   await writeAuditLog({
