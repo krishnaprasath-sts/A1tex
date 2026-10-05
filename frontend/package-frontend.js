@@ -45,9 +45,22 @@ if (fs.existsSync(path.join(rootDir, '.htaccess'))) {
   fs.copyFileSync(path.join(rootDir, '.htaccess'), path.join(deployDir, '.htaccess'))
 }
 
-// 6. Verify critical files
+// 6. Write production standalone package.json
+console.log('7. Writing standalone package.json...')
+const deployPkg = {
+  name: 'a1tex',
+  version: '0.1.0',
+  private: true,
+  scripts: {
+    start: 'node server.js'
+  }
+}
+fs.writeFileSync(path.join(deployDir, 'package.json'), JSON.stringify(deployPkg, null, 2), 'utf-8')
+
+// 7. Verify critical files
 const criticalFiles = [
   'server.js',
+  'package.json',
   '.next/static',
   'public',
   'node_modules',

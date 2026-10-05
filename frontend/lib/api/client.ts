@@ -41,6 +41,25 @@ type ApiOptions = RequestInit & {
   timeoutMs?: number
 }
 
+export class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+// Server-rendered requests leave from the frontend server's own IP with no Origin/Referer,
+// so the API rate limiter counts every visitor's page render against one shared bucket.
+// Sending the storefront URL as Referer marks them as storefront traffic, same as browser calls.
+function getServerHeaders(): Record<string, string> {
+  if (typeof window !== 'undefined') return {}
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://a1tex.in').replace(/\/$/, '')
+  return { Referer: `${siteUrl}/` }
+}
+
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const baseUrl = getApiBaseUrl()
   const controller = new AbortController()
@@ -53,16 +72,17 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
       credentials: 'include',
       signal: controller.signal,
       headers: options.body instanceof FormData
-        ? (options.headers as Record<string, string> || {})
+        ? { ...getServerHeaders(), ...(options.headers as Record<string, string> || {}) }
         : {
             'Content-Type': 'application/json',
+            ...getServerHeaders(),
             ...(options.headers || {}),
           },
     })
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
-      throw new Error(data?.message || data?.error || 'API request failed')
+      throw new ApiError(data?.message || data?.error || 'API request failed', response.status)
     }
     return data as T
   } finally {

@@ -3,6 +3,8 @@ import { sequelize } from '../database/sequelize.js'
 import { EmailCampaign } from './email-campaign.model.js'
 import { ContactEnquiry } from './contact-enquiry.model.js'
 import { ShippingRate } from './shipping-rate.model.js'
+import { StockNotification } from './stock-notification.model.js'
+export { StockNotification }
 export { EmailCampaign }
 export { ContactEnquiry }
 export { ShippingRate }
@@ -539,6 +541,8 @@ export function initAssociations() {
   Category.hasMany(Category, { foreignKey: 'parent_id', as: 'children' })
   Category.hasMany(Product, { foreignKey: 'category_id' })
   Product.belongsTo(Category, { foreignKey: 'category_id' })
+  Category.hasMany(Product, { foreignKey: 'sub_category_id', as: 'subCategoryProducts' })
+  Product.belongsTo(Category, { foreignKey: 'sub_category_id', as: 'subCategory' })
   Product.hasMany(ProductImage, { foreignKey: 'product_id', as: 'images' })
   Product.hasMany(ProductVariant, { foreignKey: 'product_id', as: 'variants' })
   ProductVariant.belongsTo(Product, { foreignKey: 'product_id' })

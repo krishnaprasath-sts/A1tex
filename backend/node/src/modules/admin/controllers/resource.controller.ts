@@ -25,6 +25,7 @@ import { expireOldCoupons } from '../../../services/coupon-expiry.service.js'
 import { AppError } from '../../../utils/http.js'
 import { slugify } from '../../../utils/slug.js'
 import { syncInvoiceStatus } from '../../../services/invoice.service.js'
+import { notifyBackInStockAsync } from '../../../services/stock-notify.service.js'
 import { invalidateCompanyCache, invalidateShippingCache, invalidateGuestDiscountPopupCache, invalidateCourierCache } from '../../../services/settings.service.js'
 import {
   cleanupFile,
@@ -204,6 +205,18 @@ export const resourceConfig: Record<string, ResourceConfig> = {
         await cascadeDeleteProduct(product.id)
       }
     },
+  },
+  collections: {
+    model: Category,
+    entity: 'category',
+    writable: ['section', 'name', 'slug', 'href', 'imageUrl', 'tag', 'navVisible', 'homeVisible', 'headerHighlight', 'sortOrder', 'active', 'metadata', 'parentId'],
+    imageFields: ['imageUrl'],
+    defaultOrder: [['sortOrder', 'ASC'], ['id', 'ASC']],
+    validationSchema: categoryCreateSchema,
+    beforeSave: async (body, req) => {
+      return (resourceConfig.categories.beforeSave as any)(body, req)
+    },
+    useForceDelete: true,
   },
   products: {
     model: Product,
@@ -461,14 +474,22 @@ export const listResource = async (req: Request, res: Response) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
 
   const includeOptions = resource === 'products'
-    ? [{
-        model: Category, as: 'Category',
-        attributes: ['id', 'name', 'active', 'parentId'],
-        include: [{
-          model: Category, as: 'parent',
-          attributes: ['id', 'name'],
-        }],
-      }]
+    ? [
+        {
+          model: Category, as: 'Category',
+          attributes: ['id', 'name', 'active', 'parentId'],
+          include: [{
+            model: Category, as: 'parent',
+            attributes: ['id', 'name'],
+          }],
+          required: false,
+        },
+        {
+          model: Category, as: 'subCategory',
+          attributes: ['id', 'name', 'active', 'parentId'],
+          required: false,
+        },
+      ]
     : resource === 'coupons'
       ? [{ model: CouponCustomer, as: 'eligibleCustomers', attributes: ['customerId'] }]
       : undefined
@@ -480,32 +501,240 @@ export const listResource = async (req: Request, res: Response) => {
 
   const where: any = {}
   if (resource === 'products' && search) {
-    const variantMatches = await ProductVariant.findAll({
-      where: { sku: { [Op.like]: `%${search}%` } },
-      attributes: ['productId'],
-      limit: 60,
-      raw: true,
-    }) as any[]
-    const variantProductIds = Array.from(new Set(variantMatches.map(v => v.productId).filter(Boolean)))
+    const rawSearch = search.trim()
+    const lowerSearch = rawSearch.toLowerCase()
+    const words = lowerSearch.split(/\s+/).filter(w => w.length > 0)
 
+    // Helper to generate search variants (including sh/s phonetics)
+    const getVariants = (str: string): string[] => {
+      const set = new Set<string>()
+      const s = str.toLowerCase().trim()
+      if (!s) return []
+      set.add(s)
+      set.add(s.replace(/\s+/g, '-'))
+      set.add(s.replace(/-/g, ' '))
+      if (s.includes('sh')) {
+        set.add(s.replace(/sh/g, 's'))
+      } else if (s.includes('s')) {
+        set.add(s.replace(/s/g, 'sh'))
+      }
+      return Array.from(set)
+    }
+
+    const allSearchVariants = getVariants(lowerSearch)
+
+    // Helper to find all category & subcategory IDs matching given terms (including parent-child hierarchy)
+    const resolveCategoryIdsForTerms = async (terms: string[]): Promise<number[]> => {
+      const orClauses: any[] = []
+      for (const t of terms) {
+        orClauses.push(
+          { name: { [Op.like]: `%${t}%` } },
+          { slug: { [Op.like]: `%${t}%` } },
+          { section: { [Op.like]: `%${t}%` } },
+          { tag: { [Op.like]: `%${t}%` } }
+        )
+      }
+      const matched = await Category.findAll({
+        where: { [Op.or]: orClauses },
+        attributes: ['id', 'parentId'],
+        paranoid: false,
+        raw: true,
+      }) as any[]
+
+      const idSet = new Set<number>()
+      for (const c of matched) {
+        if (c.id) idSet.add(Number(c.id))
+        if (c.parentId) idSet.add(Number(c.parentId))
+      }
+
+      if (idSet.size > 0) {
+        // Also fetch all subcategories whose parent is any of the matched IDs
+        const children = await Category.findAll({
+          where: { parentId: { [Op.in]: Array.from(idSet) } },
+          attributes: ['id'],
+          paranoid: false,
+          raw: true,
+        }) as any[]
+        for (const child of children) {
+          if (child.id) idSet.add(Number(child.id))
+        }
+      }
+      return Array.from(idSet)
+    }
+
+    // Helper to find variant product IDs for terms
+    const resolveVariantProductIdsForTerms = async (terms: string[]): Promise<number[]> => {
+      const orClauses: any[] = []
+      for (const t of terms) {
+        orClauses.push(
+          { sku: { [Op.like]: `%${t}%` } },
+          { colorName: { [Op.like]: `%${t}%` } },
+          { label: { [Op.like]: `%${t}%` } },
+          { size: { [Op.like]: `%${t}%` } }
+        )
+      }
+      const vRows = await ProductVariant.findAll({
+        where: { [Op.or]: orClauses },
+        attributes: ['productId'],
+        limit: 500,
+        raw: true,
+      }) as any[]
+      return Array.from(new Set(vRows.map(v => v.productId || (v as any).product_id).filter(Boolean)))
+    }
+
+    const exactCatIds = await resolveCategoryIdsForTerms(allSearchVariants)
+    const exactVarProdIds = await resolveVariantProductIdsForTerms(allSearchVariants)
+
+    // Build exact phrase product field conditions (using Product.column to prevent ambiguous column errors)
+    const exactOrConditions: any[] = []
+    for (const v of allSearchVariants) {
+      exactOrConditions.push(
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.code')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.name')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.type')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.slug')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.category')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.color')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.tag')), { [Op.like]: `%${v}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.description')), { [Op.like]: `%${v}%` })
+      )
+    }
+    if (/^\d+$/.test(rawSearch)) {
+      exactOrConditions.push({ id: Number(rawSearch) })
+    }
+    if (exactCatIds.length > 0) {
+      exactOrConditions.push(
+        { categoryId: { [Op.in]: exactCatIds } },
+        { subCategoryId: { [Op.in]: exactCatIds } }
+      )
+    }
+    if (exactVarProdIds.length > 0) {
+      exactOrConditions.push({ id: { [Op.in]: exactVarProdIds } })
+    }
+
+    if (words.length <= 1) {
+      where[Op.or] = exactOrConditions
+    } else {
+      // Multi-word search: Each word must match at least one attribute/category/variant
+      const andTokenConditions: any[] = []
+
+      for (const w of words) {
+        const wVariants = getVariants(w)
+        const wordCatIds = await resolveCategoryIdsForTerms(wVariants)
+        const wordVarProdIds = await resolveVariantProductIdsForTerms(wVariants)
+
+        const wordOr: any[] = []
+        for (const v of wVariants) {
+          wordOr.push(
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.code')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.name')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.type')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.slug')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.category')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.color')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.tag')), { [Op.like]: `%${v}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.description')), { [Op.like]: `%${v}%` })
+          )
+        }
+        if (/^\d+$/.test(w)) {
+          wordOr.push({ id: Number(w) })
+        }
+        if (wordCatIds.length > 0) {
+          wordOr.push(
+            { categoryId: { [Op.in]: wordCatIds } },
+            { subCategoryId: { [Op.in]: wordCatIds } }
+          )
+        }
+        if (wordVarProdIds.length > 0) {
+          wordOr.push({ id: { [Op.in]: wordVarProdIds } })
+        }
+
+        andTokenConditions.push({ [Op.or]: wordOr })
+      }
+
+      where[Op.or] = [
+        { [Op.and]: andTokenConditions },
+        ...exactOrConditions,
+      ]
+    }
+  }
+
+  if ((resource === 'categories' || resource === 'collections') && search) {
+    const lowerSearch = search.toLowerCase().trim()
+    const hyphenated = lowerSearch.replace(/\s+/g, '-')
+    const words = lowerSearch.split(/\s+/).filter(w => w.length > 0)
+
+    if (words.length <= 1) {
+      const catOrConditions: any[] = [
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), { [Op.like]: `%${lowerSearch}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('slug')), { [Op.like]: `%${lowerSearch}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('section')), { [Op.like]: `%${lowerSearch}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('tag')), { [Op.like]: `%${lowerSearch}%` }),
+      ]
+      if (hyphenated !== lowerSearch) {
+        catOrConditions.push(sequelize.where(sequelize.fn('LOWER', sequelize.col('slug')), { [Op.like]: `%${hyphenated}%` }))
+      }
+      if (/^\d+$/.test(search)) {
+        catOrConditions.push({ id: Number(search) })
+      }
+      where[Op.or] = catOrConditions
+    } else {
+      const andTokenConditions = words.map(w => ({
+        [Op.or]: [
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), { [Op.like]: `%${w}%` }),
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('slug')), { [Op.like]: `%${w}%` }),
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('section')), { [Op.like]: `%${w}%` }),
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('tag')), { [Op.like]: `%${w}%` }),
+        ]
+      }))
+      where[Op.or] = [
+        { [Op.and]: andTokenConditions },
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), { [Op.like]: `%${lowerSearch}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('slug')), { [Op.like]: `%${hyphenated}%` }),
+      ]
+    }
+  }
+
+  if (resource === 'coupons' && search) {
+    const lowerSearch = search.toLowerCase()
     where[Op.or] = [
-      { code: { [Op.like]: `%${search}%` } },
-      { name: { [Op.like]: `%${search}%` } },
-      { type: { [Op.like]: `%${search}%` } },
-      ...(variantProductIds.length > 0 ? [{ id: { [Op.in]: variantProductIds } }] : []),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Coupon.code')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Coupon.description')), { [Op.like]: `%${lowerSearch}%` }),
     ]
   }
 
+  if (resource === 'customers' && search) {
+    const lowerSearch = search.toLowerCase()
+    where[Op.or] = [
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Customer.name')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Customer.email')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Customer.mobile')), { [Op.like]: `%${lowerSearch}%` }),
+    ]
+  }
+
+  if (resource === 'enquiries' && search) {
+    const lowerSearch = search.toLowerCase()
+    where[Op.or] = [
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('ContactEnquiry.name')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('ContactEnquiry.email')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('ContactEnquiry.phonenumber')), { [Op.like]: `%${lowerSearch}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('ContactEnquiry.message')), { [Op.like]: `%${lowerSearch}%` }),
+    ]
+  }
+
+  const hasWhere = Object.keys(where).length > 0 || Object.getOwnPropertySymbols(where).length > 0
+  const finalWhere = hasWhere ? where : undefined
+
   const [rows, total] = await Promise.all([
     config.model.findAll({
-      where: Object.keys(where).length ? where : undefined,
+      where: finalWhere,
       order: config.defaultOrder ?? [['id', 'DESC']],
       offset: (page - 1) * perPage,
       limit: perPage,
       paranoid: true,
       include: includeOptions,
     }),
-    config.model.count({ where: Object.keys(where).length ? where : undefined, paranoid: true }),
+    config.model.count({ where: finalWhere, paranoid: true }),
   ])
 
   res.json({
@@ -513,22 +742,27 @@ export const listResource = async (req: Request, res: Response) => {
       const plain = row.get({ plain: true })
       if (resource === 'products') {
         const cat = plain.Category
+        const subCat = plain.subCategory
         if (cat) {
           if (cat.parentId && cat.parent) {
             plain.categoryName = cat.parent.name
             plain.subcategoryName = cat.name
           } else {
             plain.categoryName = cat.name
-            plain.subcategoryName = null
+            plain.subcategoryName = subCat?.name || plain.type || null
           }
-        } else {
+        } else if (subCat) {
           plain.categoryName = null
-          plain.subcategoryName = null
+          plain.subcategoryName = subCat.name
+        } else {
+          plain.categoryName = plain.category || null
+          plain.subcategoryName = plain.type || null
         }
         if (plain.status === 'archived') {
           plain.status = 'inactive'
         }
         delete plain.Category
+        delete plain.subCategory
       }
       if (resource === 'coupons') {
         const customerIds = (plain.eligibleCustomers || []).map((c: any) => c.customerId)
@@ -683,6 +917,10 @@ export const updateResource = async (req: Request, res: Response) => {
       if (Object.keys(vUpdates).length > 0) {
         await defaultVariant.update(vUpdates)
       }
+    }
+
+    if (body.stockQty != null && oldStockQty <= 0 && Number(body.stockQty) > 0) {
+      notifyBackInStockAsync(Number(id), defaultVariant ? Number(defaultVariant.getDataValue('id')) : null)
     }
   }
 

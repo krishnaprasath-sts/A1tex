@@ -65,19 +65,48 @@ function OrderConfirmationContent() {
       return
     }
 
+    let isSubscribed = true
+
     async function loadOrder() {
-      try {
-        const qs = token ? `?token=${encodeURIComponent(token)}` : ''
-        const data = await apiFetch<{ order: OrderData }>(`/storefront/orders/${orderId}${qs}`)
-        setOrder(data.order)
-      } catch {
-        setError('Could not load order details.')
-      } finally {
+      const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+      let attempts = 0
+      let lastErr: string | null = null
+
+      while (attempts < 6 && isSubscribed) {
+        attempts++
+        try {
+          const data = await apiFetch<{ order: OrderData }>(`/storefront/orders/${orderId}${qs}`)
+          if (data?.order) {
+            setOrder(data.order)
+            setLoading(false)
+            // If order is still pending_payment or processing, re-check in 2 seconds
+            if (data.order.status === 'pending_payment' || data.order.paymentStatus === 'processing') {
+              if (attempts < 6) {
+                await new Promise(r => setTimeout(r, 2000))
+                continue
+              }
+            }
+            return
+          }
+        } catch (e: any) {
+          lastErr = e?.message || 'Could not load order details.'
+          if (attempts < 6) {
+            await new Promise(r => setTimeout(r, 2000))
+          }
+        }
+      }
+
+      if (isSubscribed) {
+        setError(lastErr || 'Could not load order details.')
         setLoading(false)
       }
     }
 
     loadOrder()
+
+    return () => {
+      isSubscribed = false
+    }
   }, [orderId, token])
 
   if (loading) {

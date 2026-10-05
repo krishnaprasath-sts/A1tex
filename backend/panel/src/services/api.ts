@@ -418,9 +418,29 @@ export function getOrderPipelineCounts() {
   return apiFetch<{ counts: Record<string, number> }>('/admin/orders/pipeline/counts')
 }
 
-export function getOrdersByStage(stage: string, page = 1, perPage = 20) {
+export async function getOrdersByStage(stage: string, page = 1, perPage = 20, search = '') {
+  const trimmed = search ? search.trim() : ''
+
+  if (trimmed) {
+    const searchParams = new URLSearchParams({
+      q: trimmed,
+      stage: stage || 'all',
+      page: String(page),
+      perPage: String(perPage),
+    })
+    return apiFetch<{ items: Array<Record<string, unknown>>; total: number; page: number; perPage: number; totalPages: number }>(
+      `/admin/orders/search?${searchParams.toString()}`
+    )
+  }
+
+  const targetStage = stage || 'pending'
+  const params = new URLSearchParams({
+    page: String(page),
+    perPage: String(perPage),
+  })
+
   return apiFetch<{ items: Array<Record<string, unknown>>; total: number; page: number; perPage: number; totalPages: number }>(
-    `/admin/orders/pipeline/${stage}?page=${page}&perPage=${perPage}`,
+    `/admin/orders/pipeline/${targetStage}?${params.toString()}`,
   )
 }
 
@@ -433,6 +453,8 @@ export function sendRecoveryEmail(id: number | string) {
     method: 'POST',
   })
 }
+
+
 
 // ─── Review API ─────────────────────────────────────────────
 
@@ -642,9 +664,10 @@ export function listAllVariants(page = 1, perPage = 20, productId?: number, sear
 
 // ─── Stock API ────────────────────────────────────────────────
 
-export function getStockList(page = 1, perPage = 20) {
+export function getStockList(page = 1, perPage = 20, search = '') {
+  const query = search ? `&search=${encodeURIComponent(search)}` : ''
   return apiFetch<{ items: Array<Record<string, unknown>>; total: number; page: number; perPage: number; totalPages: number }>(
-    `/admin/stock?page=${page}&perPage=${perPage}`,
+    `/admin/stock?page=${page}&perPage=${perPage}${query}`,
   )
 }
 
@@ -758,4 +781,5 @@ export function getMyAssignments() {
 export function markOrderPacked(orderId: number | string) {
   return apiFetch<{ ok: boolean; status: string }>(`/admin/orders/${orderId}/pack`, { method: 'PATCH' })
 }
+
 

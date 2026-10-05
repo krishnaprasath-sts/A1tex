@@ -2,7 +2,6 @@ import {
   BadgePercent,
   Boxes,
   ClipboardList,
-  Clock,
   Flag,
   Image,
   LayoutDashboard,

@@ -206,8 +206,18 @@ export const clearCatalogCache = () => {
 }
 
 export const getProductBySlug = async (req: Request, res: Response) => {
-  const slug = String(req.params.slug || '').trim()
-  const cached = productSlugCache.get(slug)
+  const rawSlug = String(req.params.slug || '').trim()
+  if (!rawSlug) return res.status(400).json({ message: 'Slug is required' })
+
+  let slug = rawSlug
+  try {
+    slug = decodeURIComponent(rawSlug).trim()
+  } catch {
+    slug = rawSlug.trim()
+  }
+  const lowerSlug = slug.toLowerCase()
+
+  const cached = productSlugCache.get(lowerSlug)
   if (cached && Date.now() < cached.expiry) {
     return res.json({ product: cached.data })
   }
@@ -221,7 +231,12 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     {
       model: ProductVariant,
       as: 'variants',
-      where: { status: 'active' },
+      where: {
+        [Op.or]: [
+          { status: 'active' },
+          { status: null },
+        ],
+      },
       required: false,
       attributes: ['id', 'variantType', 'label', 'colorName', 'colorHex', 'size',
                    'sku', 'price', 'originalPrice', 'stockQty',
@@ -239,26 +254,43 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     [{ model: ProductVariant, as: 'variants' }, { model: VariantImage, as: 'images' }, 'sortOrder', 'ASC'],
   ]
 
+  const baseStatusCondition = {
+    [Op.or]: [
+      { status: 'active' },
+      { status: { [Op.ne]: 'archived' } },
+    ],
+  }
+
+  // Layer 1: Case-insensitive exact slug match
   let product = await Product.findOne({ 
-    where: { slug, status: 'active' },
+    where: { 
+      ...baseStatusCondition,
+      [Op.or]: [
+        { slug },
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.slug')), lowerSlug),
+      ],
+    },
     include: includes,
     order: orderArray,
   })
 
-  // Fallback 1: Partial slug prefix match, product code, variant SKU, or numeric ID
+  // Layer 2: Match by Product Code, Numeric ID, or Variant SKU
   if (!product && slug) {
     const isNum = /^\d+$/.test(slug)
     const matchingVariant = await ProductVariant.findOne({
-      where: { sku: slug, status: 'active' },
+      where: {
+        [Op.or]: [
+          { sku: slug },
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('sku')), lowerSlug),
+        ],
+      },
       attributes: ['productId'],
       raw: true,
     }) as any
 
     const orConditions: any[] = [
-      { slug: { [Op.like]: `${slug}%` } },
-      { slug: { [Op.like]: `%${slug}%` } },
-      { name: { [Op.like]: `%${slug.replace(/-/g, ' ')}%` } },
       { code: slug },
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('code')), lowerSlug),
     ]
     if (isNum) {
       orConditions.push({ id: Number(slug) })
@@ -269,8 +301,36 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 
     product = await Product.findOne({
       where: {
-        status: 'active',
+        ...baseStatusCondition,
         [Op.or]: orConditions,
+      },
+      include: includes,
+      order: orderArray,
+    })
+  }
+
+  // Layer 3: Partial slug match, hyphenated name match, and token-based name search
+  if (!product && slug) {
+    const cleanSpaced = lowerSlug.replace(/[-_]+/g, ' ').trim()
+    const wordTokens = cleanSpaced.split(/\s+/).filter(w => w.length > 2)
+
+    const fuzzyOr: any[] = [
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.slug')), { [Op.like]: `%${lowerSlug}%` }),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.name')), { [Op.like]: `%${cleanSpaced}%` }),
+    ]
+
+    if (wordTokens.length > 0) {
+      fuzzyOr.push({
+        [Op.and]: wordTokens.map(word =>
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('Product.name')), { [Op.like]: `%${word}%` })
+        )
+      })
+    }
+
+    product = await Product.findOne({
+      where: {
+        ...baseStatusCondition,
+        [Op.or]: fuzzyOr,
       },
       include: includes,
       order: orderArray,
@@ -279,7 +339,7 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 
   if (!product) return res.status(404).json({ message: 'Product not found' })
   const mapped = mapProduct(product)
-  productSlugCache.set(slug, { data: mapped, expiry: Date.now() + 60000 })
+  productSlugCache.set(lowerSlug, { data: mapped, expiry: Date.now() + 60000 })
   res.json({ product: mapped })
 }
 

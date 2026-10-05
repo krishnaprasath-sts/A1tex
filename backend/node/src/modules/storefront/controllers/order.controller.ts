@@ -22,7 +22,7 @@ import {
 import { sequelize } from '../../../database/sequelize.js'
 import { AppError } from '../../../utils/http.js'
 import { env } from '../../../config/env.js'
-import { createRazorpayOrder as razorpayCreateOrder, verifyPayment as verifyRazorpayPayment, fetchPayment, refundPayment } from '../../../services/razorpay.service.js'
+import { createRazorpayOrder as razorpayCreateOrder, verifyPayment as verifyRazorpayPayment, fetchPayment, refundPayment, capturePayment } from '../../../services/razorpay.service.js'
 import { createInvoiceForOrder } from '../../../services/invoice.service.js'
 import { getCompanyInfo, getShippingConfig, resolveShippingOptions } from '../../../services/settings.service.js'
 import { resolveAutoWelcomeDiscountPercentage } from '../../../services/guest-coupon.service.js'
@@ -379,7 +379,16 @@ export const getOrderById = async (req: Request, res: Response) => {
     }
   }
 
-  if (isAbandonedCheckout(plainOrder)) throw new AppError(404, 'Order not found')
+  // Only hide truly abandoned/cancelled orders if not authorized by guest token or customer id
+  if (isAbandonedCheckout(plainOrder)) {
+    // If user has verified ownership via guestToken or auth, allow viewing so confirmation page can poll
+    const token = (req.query.token as string) || ''
+    const expectedToken = computeGuestToken(Number(req.params.id))
+    const isOwner = (auth && (plainOrder.customerId === auth.sub || (plainOrder.customerEmail && plainOrder.customerEmail.toLowerCase() === auth.email?.toLowerCase()))) || (token && token === expectedToken)
+    if (!isOwner) {
+      throw new AppError(404, 'Order not found')
+    }
+  }
 
   res.json({ order: plainOrder })
 }
@@ -998,6 +1007,7 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
       status: 'pending_payment',
       paymentStatus: 'pending',
       paymentMethod,
+      razorpayOrderId: razorpayOrder?.id ?? null,
       subtotal,
       shippingTotal: effectiveShippingTotal,
       grandTotal,
@@ -1041,10 +1051,7 @@ export const createRazorpayOrder = async (req: Request, res: Response) => {
 
   const orderIdNum = draftResult.get('id') as number
 
-  // Step 2: COD stays at pending_payment — admin confirms manually from
-  // Abandoned Checkouts tab. Stock is deducted on confirmation, not at creation.
-  // Online orders also stay at pending_payment and get promoted from verify-payment.
-
+  // Step 2: Online orders stay at pending_payment and get promoted from verify-payment or webhook.
   const guestToken = !auth ? computeGuestToken(orderIdNum) : undefined
 
   res.status(201).json({
@@ -1083,6 +1090,20 @@ export const verifyPayment = async (req: Request, res: Response) => {
     throw new AppError(400, 'Payment verification failed — signature mismatch')
   }
 
+  const order = await Order.findByPk(orderId)
+  if (!order) {
+    throw new AppError(404, 'Order not found')
+  }
+
+  // The signature only proves the payment belongs to razorpayOrderId; the
+  // orderId is supplied by the browser, so tie the two together here.
+  const orderRazorpayId = (order.get('razorpayOrderId') as string | null)
+    || ((order.get('metadata') as any)?.razorpayOrderId as string | undefined)
+    || null
+  if (orderRazorpayId && orderRazorpayId !== razorpayOrderId) {
+    throw new AppError(400, 'Payment does not belong to this order.')
+  }
+
   let payment: any
   try {
     payment = await fetchPayment(razorpayPaymentId)
@@ -1090,21 +1111,22 @@ export const verifyPayment = async (req: Request, res: Response) => {
     console.warn(`[Payment] Razorpay fetchPayment failed, proceeding with HMAC-only verification: ${err.message}`)
   }
   if (payment) {
-    if (payment.order_id !== razorpayOrderId) {
+    if (payment.order_id && payment.order_id !== razorpayOrderId) {
       throw new AppError(400, 'Razorpay order ID does not match')
     }
-    if (payment.status !== 'captured' && payment.status !== 'authorized') {
+    if (payment.status === 'authorized') {
+      try {
+        await capturePayment(razorpayPaymentId, Number((order.get('grandTotal') as any) || 0))
+      } catch (capErr: any) {
+        console.warn(`[Payment] Auto-capture in verifyPayment failed for ${razorpayPaymentId}:`, capErr.message)
+      }
+    } else if (payment.status !== 'captured') {
       throw new AppError(400, `Payment is not successful (status: ${payment.status})`)
     }
   }
 
-  const order = await Order.findByPk(orderId)
-  if (!order) {
-    throw new AppError(404, 'Order not found')
-  }
-
   const plainOrder = plain<any>(order)
-  if (plainOrder.paymentStatus === 'paid') {
+  if (plainOrder.paymentStatus === 'paid' && plainOrder.status !== 'pending_payment') {
     const existingOrder = await Order.findByPk(orderId, {
       include: [{ model: OrderItem, as: 'items' }],
     })
@@ -1140,17 +1162,30 @@ type PaymentDetails = {
 
 export async function processPaidOrder(orderId: number, details: PaymentDetails): Promise<void> {
   // Both the frontend's verifyPayment call and the Razorpay webhook's payment.captured
-  // handler can invoke this for the same order around the same time. A plain
-  // "if already paid, return" check is a read-then-write race — two concurrent callers
-  // can both pass it before either commits, double-deducting stock and double-sending
-  // emails. Claim the order inside a row lock first so only one caller proceeds; the
-  // other sees paid/processing and returns immediately.
+  // handler can invoke this for the same order around the same time. Claim inside row lock.
   const claimedOrder = await sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, { transaction: t, lock: t.LOCK.UPDATE })
     if (!order) throw new AppError(404, 'Order not found')
     const current = plain<any>(order)
-    if (current.paymentStatus === 'paid' || current.paymentStatus === 'processing') return null
-    await order.update({ paymentStatus: 'processing' }, { transaction: t })
+    if (current.paymentStatus === 'paid' && current.status !== 'pending_payment') return null
+
+    // One payment confirms one order. If this payment already sits on another
+    // order, this one is a different checkout attempt that was never paid for.
+    const usedElsewhere = await Order.findOne({
+      where: { razorpayPaymentId: details.razorpayPaymentId, id: { [Op.ne]: orderId } },
+      transaction: t,
+    })
+    if (usedElsewhere) {
+      console.warn(
+        `[Order ${current.orderNumber}] Payment ${details.razorpayPaymentId} already belongs to order ` +
+        `${usedElsewhere.getDataValue('orderNumber')} — not confirming a second order with it.`,
+      )
+      throw new AppError(409, 'This payment has already been applied to another order.')
+    }
+
+    // Stamping the payment id as part of the claim is what makes the check
+    // above hold for a second caller arriving while this one is still running.
+    await order.update({ paymentStatus: 'processing', razorpayPaymentId: details.razorpayPaymentId }, { transaction: t })
     return current
   })
   if (!claimedOrder) return
@@ -1160,125 +1195,152 @@ export async function processPaidOrder(orderId: number, details: PaymentDetails)
   const couponId = plainOrder.couponId
   const discountAmount = Number(plainOrder.discount || 0)
 
-  // Runs before stock is touched: if this order has to be refunded there is
-  // then nothing to restore.
-  if (couponId) {
-    await enforceCouponPerUserLimitOrRefund(couponId, Number(orderId), plainOrder, order, details.razorpayPaymentId)
-  }
-
-  // Deduct stock inside locked transaction — auto-refund on failure
-  const orderItems = await OrderItem.findAll({ where: { orderId } })
   try {
-    await sequelize.transaction(async (t) => {
-      for (const item of orderItems) {
-        const itemPlain = plain<any>(item)
-        if (itemPlain.variantId) {
-          const v = await ProductVariant.findOne({
-            where: { id: itemPlain.variantId },
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          })
-          if (v) {
-            const currentStock = (v as any).stockQty ?? 0
-            if (currentStock < itemPlain.quantity) {
-              throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
+    // Runs before stock is touched: if this order has to be refunded there is
+    // then nothing to restore.
+    if (couponId) {
+      await enforceCouponPerUserLimitOrRefund(couponId, Number(orderId), plainOrder, order, details.razorpayPaymentId)
+    }
+
+    // Deduct stock inside locked transaction — auto-refund on failure
+    const orderItems = await OrderItem.findAll({ where: { orderId } })
+    try {
+      await sequelize.transaction(async (t) => {
+        for (const item of orderItems) {
+          const itemPlain = plain<any>(item)
+          if (itemPlain.variantId) {
+            const v = await ProductVariant.findOne({
+              where: { id: itemPlain.variantId },
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            })
+            if (v) {
+              const currentStock = (v as any).stockQty ?? 0
+              if (currentStock < itemPlain.quantity) {
+                throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
+              }
+              await v.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
             }
-            await v.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
-          }
-        } else if (itemPlain.productId) {
-          const p = await Product.findOne({
-            where: { id: itemPlain.productId },
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          })
-          if (p) {
-            const currentStock = (p as any).stockQty ?? 0
-            if (currentStock < itemPlain.quantity) {
-              throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
+          } else if (itemPlain.productId) {
+            const p = await Product.findOne({
+              where: { id: itemPlain.productId },
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            })
+            if (p) {
+              const currentStock = (p as any).stockQty ?? 0
+              if (currentStock < itemPlain.quantity) {
+                throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
+              }
+              await p.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
             }
-            await p.update({ stockQty: currentStock - itemPlain.quantity }, { transaction: t })
           }
         }
+      })
+    } catch (stockErr: any) {
+      // Stock deduction failed after payment — issue automatic refund
+      const razorpayPaymentId = details.razorpayPaymentId
+      try {
+        await refundPayment(razorpayPaymentId)
+        console.error(`[Order ${orderId}] Stock insufficient after payment. Full refund issued for payment ${razorpayPaymentId}.`)
+      } catch (refundErr: any) {
+        console.error(`[Order ${orderId}] CRITICAL: Refund FAILED for payment ${razorpayPaymentId}:`, refundErr.message)
       }
-    })
-  } catch (stockErr: any) {
-    // Stock deduction failed after payment — issue automatic refund
-    const razorpayPaymentId = details.razorpayPaymentId
-    try {
-      await refundPayment(razorpayPaymentId)
-      console.error(`[Order ${orderId}] Stock insufficient after payment. Full refund issued for payment ${razorpayPaymentId}.`)
-    } catch (refundErr: any) {
-      console.error(`[Order ${orderId}] CRITICAL: Refund FAILED for payment ${razorpayPaymentId}:`, refundErr.message)
-    }
-    // Mark order as cancelled + refunded
-    await order.update({
-      status: 'cancelled',
-      paymentStatus: 'refunded',
-      metadata: {
-        ...(plainOrder.metadata || {}),
+      // Mark order as cancelled + refunded
+      await order.update({
+        status: 'cancelled',
+        paymentStatus: 'refunded',
         razorpayPaymentId,
-        refundReason: stockErr.message || 'Insufficient stock after payment',
-        refundedAt: new Date().toISOString(),
+        metadata: {
+          ...(plainOrder.metadata || {}),
+          razorpayPaymentId,
+          refundReason: stockErr.message || 'Insufficient stock after payment',
+          refundedAt: new Date().toISOString(),
+        },
+      })
+      throw new AppError(400, `Order cancelled: ${stockErr.message || 'Insufficient stock'}. A full refund has been initiated and will reflect in 5-7 business days.`)
+    }
+
+    const currentMeta = (order.get({ plain: true }) as any).metadata || {}
+    await order.update({
+      status: 'pending',
+      paymentStatus: 'paid',
+      razorpayPaymentId: details.razorpayPaymentId,
+      metadata: {
+        ...currentMeta,
+        razorpayPaymentId: details.razorpayPaymentId,
+        ...(details.razorpaySignature ? { razorpaySignature: details.razorpaySignature } : {}),
+        ...(details.webhookConfirmed ? { webhookConfirmed: true } : {}),
+        paidAt: new Date().toISOString(),
       },
     })
-    throw new AppError(400, `Order cancelled: ${stockErr.message || 'Insufficient stock'}. A full refund has been initiated and will reflect in 5-7 business days.`)
-  }
 
-  await order.update({
-    status: 'pending',
-    paymentStatus: 'paid',
-    metadata: {
-      ...(plainOrder.metadata || {}),
-      razorpayPaymentId: details.razorpayPaymentId,
-      ...(details.razorpaySignature ? { razorpaySignature: details.razorpaySignature } : {}),
-      ...(details.webhookConfirmed ? { webhookConfirmed: true } : {}),
-      paidAt: new Date().toISOString(),
-    },
-  })
-
-  // Record coupon usage for paid orders. Guarded by orderId so a retried or
-  // webhook-duplicated confirmation of the SAME order can't count twice.
-  if (couponId) {
-    const existing = await CouponUsage.findOne({ where: { orderId: Number(orderId) } })
-    if (!existing) {
-      await CouponUsage.create({
-        couponId,
-        orderId: Number(orderId),
-        customerId: plainOrder.customerId ?? null,
-        customerEmail: plainOrder.customerEmail ?? null,
-        discountAmount,
-      })
-      await Coupon.increment('usedCount', { by: 1, where: { id: couponId } })
+    // Record coupon usage for paid orders. Guarded by orderId so a retried or
+    // webhook-duplicated confirmation of the SAME order can't count twice.
+    if (couponId) {
+      const existing = await CouponUsage.findOne({ where: { orderId: Number(orderId) } })
+      if (!existing) {
+        await CouponUsage.create({
+          couponId,
+          orderId: Number(orderId),
+          customerId: plainOrder.customerId ?? null,
+          customerEmail: plainOrder.customerEmail ?? null,
+          discountAmount,
+        })
+        await Coupon.increment('usedCount', { by: 1, where: { id: couponId } })
+      }
     }
-  }
 
-  // Async: create invoice + confirmation emails (fire and forget)
-  // Re-fetch with items and customer to ensure email shows full item breakdown
-  const updatedOrder = plain<any>(await Order.findByPk(orderId, {
-    include: [{ model: OrderItem, as: 'items' }, { model: Customer }],
-  }))
-  const adminEmail = env.ADMIN_EMAIL
-  const orderNumber = updatedOrder.orderNumber
-  Promise.all([
-    createInvoiceForOrder(orderId, { sendEmail: false }),
-    getCompanyInfo(),
-  ]).then(([, company]) => {
-    const customerEmailTo = (
-      (updatedOrder.customerEmail as string)
-      || ((updatedOrder.Customer as any)?.email as string)
-      || ((updatedOrder.shippingAddress as any)?.email as string)
-      || ((updatedOrder.metadata as any)?.customerEmail as string)
-      || ''
-    ).trim()
-    if (customerEmailTo) {
-      emailService.sendOrderConfirmationEmail(customerEmailTo, updatedOrder, company).catch((err: any) => {
-        console.error(`[Order ${orderNumber}] Customer email failed:`, err.message)
-      })
+    // Async: create invoice + confirmation emails (fire and forget)
+    // Re-fetch with items and customer to ensure email shows full item breakdown
+    const updatedOrder = plain<any>(await Order.findByPk(orderId, {
+      include: [{ model: OrderItem, as: 'items' }, { model: Customer }],
+    }))
+    const adminEmail = env.ADMIN_EMAIL
+    const orderNumber = updatedOrder.orderNumber
+    Promise.all([
+      createInvoiceForOrder(orderId, { sendEmail: false }),
+      getCompanyInfo(),
+    ]).then(([, company]) => {
+      const customerEmailTo = (
+        (updatedOrder.customerEmail as string)
+        || ((updatedOrder.Customer as any)?.email as string)
+        || ((updatedOrder.shippingAddress as any)?.email as string)
+        || ((updatedOrder.metadata as any)?.customerEmail as string)
+        || ''
+      ).trim()
+      if (customerEmailTo) {
+        emailService.sendOrderConfirmationEmail(customerEmailTo, updatedOrder, company).catch((err: any) => {
+          console.error(`[Order ${orderNumber}] Customer email failed:`, err.message)
+        })
+      }
+      return emailService.sendAdminOrderNotification(adminEmail, updatedOrder, company)
+    }).catch((err: any) => {
+      console.error(`[Order ${orderNumber}] Post-order notification failed:`, err.message)
+    })
+  } catch (error: any) {
+    // If order is not already paid or cancelled, restore paymentStatus to pending so it can be retried/synced
+    const fresh = await Order.findByPk(orderId)
+    if (fresh) {
+      const freshStatus = fresh.getDataValue('status') as string
+      const freshPaymentStatus = fresh.getDataValue('paymentStatus') as string
+      // Reset processing lock if the order hasn't already been promoted or cancelled
+      if (freshPaymentStatus === 'processing' && freshStatus !== 'cancelled') {
+        const existingMeta = (fresh.get({ plain: true }) as any).metadata || {}
+        await fresh.update({
+          paymentStatus: 'pending',
+          // Preserve the razorpayPaymentId so the sync cron can find this order later
+          metadata: {
+            ...existingMeta,
+            razorpayPaymentId: details.razorpayPaymentId || existingMeta.razorpayPaymentId,
+            lastProcessingError: (error.message || 'unknown').slice(0, 200),
+            lastProcessingErrorAt: new Date().toISOString(),
+          },
+        })
+      }
     }
-    return emailService.sendAdminOrderNotification(adminEmail, updatedOrder, company)
-  }).catch((err: any) => {
-    console.error(`[Order ${orderNumber}] Post-order notification failed:`, err.message)
-  })
+    throw error
+  }
 }
 
 const confirmCodSchema = z.object({

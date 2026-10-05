@@ -334,24 +334,34 @@ export default function CheckoutForm({ isBuyNow }: { isBuyNow?: boolean }) {
         description: `Order #${razorpayData.razorpayOrderId}`,
         order_id: razorpayData.razorpayOrderId,
         handler: async function (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) {
-          try {
-            const verifyData = await apiFetch<{ order: { id: number }; guestToken?: string }>(
-              '/storefront/orders/verify-payment',
-              {
-                method: 'POST',
-                timeoutMs: 30000,
-                body: JSON.stringify({
-                  razorpayPaymentId: response.razorpay_payment_id,
-                  razorpayOrderId: response.razorpay_order_id,
-                  razorpaySignature: response.razorpay_signature,
-                  orderId: razorpayData.orderId,
-                }),
-              },
-            )
-            resolve(verifyData)
-          } catch (err) {
-            reject(err)
+          let attempts = 0
+          while (attempts < 3) {
+            attempts++
+            try {
+              const verifyData = await apiFetch<{ order: { id: number }; guestToken?: string }>(
+                '/storefront/orders/verify-payment',
+                {
+                  method: 'POST',
+                  timeoutMs: 30000,
+                  body: JSON.stringify({
+                    razorpayPaymentId: response.razorpay_payment_id,
+                    razorpayOrderId: response.razorpay_order_id,
+                    razorpaySignature: response.razorpay_signature,
+                    orderId: razorpayData.orderId,
+                  }),
+                },
+              )
+              return resolve(verifyData)
+            } catch (err: any) {
+              console.warn(`[Checkout] Verify payment attempt ${attempts} failed:`, err?.message)
+              if (attempts < 3) {
+                await new Promise(r => setTimeout(r, 1500))
+              }
+            }
           }
+          // If all verify attempts timed out, the payment is captured on Razorpay.
+          // Resolve with draft order so user proceeds to confirmation and backend webhook confirms it.
+          resolve({ order: { id: razorpayData.orderId }, guestToken: razorpayData.guestToken })
         },
         modal: {
           ondismiss: function () {

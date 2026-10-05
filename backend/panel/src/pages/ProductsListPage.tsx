@@ -37,6 +37,14 @@ export default function ProductsListPage() {
     }
   }, [successMsg])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput.trim())
+      setCurrentPage(1)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['resource', 'products', currentPage, searchTerm],
     queryFn: () => listResource('products', currentPage, ITEMS_PER_PAGE, searchTerm || undefined),
@@ -143,8 +151,8 @@ export default function ProductsListPage() {
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { setSearchTerm(searchInput.trim()); setCurrentPage(1) } }}
-                placeholder="Search by name, SKU, code..."
-                className="h-10 w-64 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
+                placeholder="Search by name, SKU, code, subcategory..."
+                className="h-10 w-72 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
               />
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
             </div>

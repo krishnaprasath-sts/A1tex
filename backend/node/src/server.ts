@@ -6,6 +6,7 @@ import { assertDatabaseConnection, sequelize } from './database/sequelize.js'
 import { runMigrations } from './database/migrate.js'
 import { Admin } from './models/index.js'
 import { expireOldCoupons } from './services/coupon-expiry.service.js'
+import { syncAllPendingOrders } from './services/razorpay-sync.service.js'
 
 async function start() {
   await assertDatabaseConnection()
@@ -43,6 +44,34 @@ async function start() {
   await expireOldCoupons()
   cron.schedule('0 * * * *', expireOldCoupons, { timezone: 'Asia/Kolkata' })
   console.log('[CouponExpiry] 🕐 Hourly expiry job scheduled (Asia/Kolkata).')
+
+  // ── Razorpay order reconciliation ───────────────────────────────────
+  // Automatically sync orders stuck in pending_payment/processing with
+  // Razorpay every 5 minutes. This catches cases where payment was
+  // captured but verifyPayment failed (network timeout, race condition).
+  // Initial sync runs 30 seconds after startup to avoid slowing boot.
+  setTimeout(async () => {
+    try {
+      const result = await syncAllPendingOrders(50)
+      if (result.promoted > 0) {
+        console.log(`[RazorpaySync] Startup sync: promoted ${result.promoted} of ${result.checked} pending orders`)
+      }
+    } catch (err: any) {
+      console.error('[RazorpaySync] Startup sync failed:', err.message)
+    }
+  }, 30_000)
+
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const result = await syncAllPendingOrders(50)
+      if (result.promoted > 0) {
+        console.log(`[RazorpaySync] Cron sync: promoted ${result.promoted} of ${result.checked} pending orders`)
+      }
+    } catch (err: any) {
+      console.error('[RazorpaySync] Cron sync failed:', err.message)
+    }
+  }, { timezone: 'Asia/Kolkata' })
+  console.log('[RazorpaySync] ⏱️ Every-5-minute Razorpay reconciliation scheduled.')
 }
 
 start().catch(error => {

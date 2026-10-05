@@ -46,7 +46,7 @@ export const getReviews = async (req: Request, res: Response) => {
     Review.findAll({
       where,
       include: [
-        { model: Product, attributes: ['id', 'name', 'code', 'imageUrl'], where: Object.keys(productWhere).length ? productWhere : undefined, required: !!search },
+        { model: Product, attributes: ['id', 'name', 'code', 'imageUrl'], where: (Object.keys(productWhere).length > 0 || Object.getOwnPropertySymbols(productWhere).length > 0) ? productWhere : undefined, required: !!search },
         { model: Customer, attributes: ['id', 'name', 'email'] },
         { model: ReviewImage, as: 'images', attributes: ['id', 'imageUrl'] },
       ],

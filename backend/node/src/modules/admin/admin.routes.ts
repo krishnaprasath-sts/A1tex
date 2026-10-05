@@ -46,6 +46,9 @@ import {
   sendRecoveryEmail,
   updateOrderPayment,
   resendOrderStatusEmail,
+  searchOrders,
+  syncOrderRazorpay,
+  syncAllPendingRazorpay,
 } from './controllers/order.controller.js'
 import {
   createInvoice,
@@ -191,17 +194,23 @@ router.delete('/products/:productId/images/:imageId', requirePermission('manage_
 router.put('/products/:productId/images/reorder', requirePermission('manage_products'), asyncHandler(reorderProductImages))
 
 // Order Pipeline Endpoints
+router.get('/orders/search', requirePermission('view_orders'), asyncHandler(searchOrders))
 router.get('/orders/pipeline/counts', requirePermission('view_orders'), asyncHandler(getPipelineCounts))
 router.get('/orders/pipeline/:stage', requirePermission('view_orders'), asyncHandler(getPipelineStage))
+// Static multi-segment order routes MUST come before parameterized /:id or /:stage routes
+router.get('/orders/dispatched/cod-pending/invoices/pdf', requirePermission('manage_invoices'), asyncHandler(getDispatchedCodPendingInvoicesPdf))
+// Razorpay sync routes (manual reconciliation)
+router.post('/orders/sync-razorpay', requirePermission('view_orders'), asyncHandler(syncAllPendingRazorpay))
+router.post('/orders/:id/sync-razorpay', requirePermission('view_orders'), asyncHandler(syncOrderRazorpay))
 router.get('/orders/:id/detail', requirePermission('view_orders', 'view_my_orders'), asyncHandler(getOrderDetail))
 router.put('/orders/:id/transition', requirePermission('transition_orders'), asyncHandler(transitionOrder))
 router.put('/orders/:id/payment', asyncHandler(updateOrderPayment))
 router.get('/orders/:stage/addresses/pdf', requirePermission('view_orders'), asyncHandler(getStageAddressesPdf))
 router.get('/orders/:stage/invoices/pdf', requirePermission('manage_invoices'), asyncHandler(getStageInvoicesPdf))
-router.get('/orders/dispatched/cod-pending/invoices/pdf', requirePermission('manage_invoices'), asyncHandler(getDispatchedCodPendingInvoicesPdf))
 router.get('/orders/:id/pdf', requirePermission('view_orders'), asyncHandler(getOrderPdf))
 router.post('/orders/:id/send-recovery-email', requirePermission('view_orders'), asyncHandler(sendRecoveryEmail))
 router.post('/orders/:id/resend-status-email', requirePermission('view_orders'), asyncHandler(resendOrderStatusEmail))
+
 
 // Invoice Endpoints
 router.post('/orders/:id/invoice', requirePermission('manage_invoices'), asyncHandler(createInvoice))
@@ -259,9 +268,10 @@ router.put('/roles/:id', requirePermission('manage_roles'), asyncHandler(updateR
 router.delete('/roles/:id', requirePermission('manage_roles'), asyncHandler(deleteRole))
 
 // Order assignment & packing routes
+// IMPORTANT: /orders/my-assignments MUST come before /orders/:id routes to avoid param collision
+router.get('/orders/my-assignments', requirePermission('view_my_orders'), asyncHandler(getMyAssignments))
 router.post('/orders/:id/assign', requirePermission('assign_orders'), asyncHandler(assignOrder))
 router.delete('/orders/:id/assign', requirePermission('assign_orders'), asyncHandler(unassignOrder))
-router.get('/orders/my-assignments', requirePermission('view_my_orders'), asyncHandler(getMyAssignments))
 router.patch('/orders/:id/pack', requirePermission('pack_orders'), asyncHandler(packOrder))
 
 // Generic Resource Endpoints

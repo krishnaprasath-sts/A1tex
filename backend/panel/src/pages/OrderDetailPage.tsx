@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock, CreditCard, Download, FileText, Loader2, Mail, Navigation, Package, PackageX, RefreshCcw, RotateCcw, ShoppingBag, Truck, XCircle } from 'lucide-react'
 import { apiBaseUrl, generateInvoice, getInvoice, getOrderDetail, transitionOrderStatus, updateOrderPayment, resolveImageUrl, apiFetch, downloadBlob, sendRecoveryEmail, listResource, resendOrderStatusEmail } from '../services/api'
@@ -32,7 +32,7 @@ const validTransitionsMap: Record<string, string[]> = {
 }
 
 const nextStageMap: Record<string, { status: string; label: string }> = {
-  pending_payment: { status: 'pending', label: 'Confirm COD' },
+  pending_payment: { status: 'pending', label: 'Confirm Order (Place Order)' },
   pending: { status: 'confirmed', label: 'Confirm Order' },
   confirmed: { status: 'packing', label: 'Move to Packing' },
   packing: { status: 'dispatched', label: 'Dispatch Order' },
@@ -59,6 +59,14 @@ export default function OrderDetailPage() {
   const { hasPermission } = useAdminAuth()
   const canManageInvoices = hasPermission('manage_invoices')
   const canTransitionOrders = hasPermission('transition_orders')
+
+  const numericId = Number(id)
+  const isValidId = Boolean(id && !isNaN(numericId) && numericId > 0)
+
+  if (id && !isValidId) {
+    return <Navigate to="/orders/pending" replace />
+  }
+
   const [showConfirm, setShowConfirm] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
@@ -83,7 +91,7 @@ export default function OrderDetailPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['order-detail', id],
     queryFn: () => getOrderDetail(id!),
-    enabled: Boolean(id),
+    enabled: isValidId,
   })
 
   // Fetch dynamic courier partners from settings
@@ -122,7 +130,7 @@ export default function OrderDetailPage() {
   }, [order])
 
   useEffect(() => {
-    if (!id || !canManageInvoices) {
+    if (!id || !isValidId || !canManageInvoices) {
       setInvoice(null)
       setInvoiceLoading(false)
       return
@@ -132,7 +140,7 @@ export default function OrderDetailPage() {
       .then(res => setInvoice(res.item as Record<string, unknown> | null))
       .catch(() => setInvoice(null))
       .finally(() => setInvoiceLoading(false))
-  }, [id, data, canManageInvoices]) // re-fetch when order data changes
+  }, [id, isValidId, data, canManageInvoices]) // re-fetch when order data changes
 
   async function handleGenerateInvoice() {
     if (!id) return
@@ -635,7 +643,8 @@ export default function OrderDetailPage() {
               Payment Information
             </h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+
             <span className={`admin-badge text-xs px-2.5 py-1 font-bold ${orderPaymentStatus === 'paid' ? 'admin-badge-success' : 'admin-badge-warning'}`}>
               Status: {orderPaymentStatus.toUpperCase()}
             </span>

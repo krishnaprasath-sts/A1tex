@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { ApiError, apiFetch } from './client'
 import type { CanReviewResponse, MarqueeMessageData, NavigationResponse, Review, ReviewSubmission, ReviewSummary, StorefrontHomeData, StorefrontProduct } from './types'
 
 // In-memory cache for ultra-fast storefront navigation (60s TTL)
@@ -21,6 +21,22 @@ function setCache<T>(key: string, data: T, ttlMs = 60000): T {
 
 export function clearStorefrontCache() {
   cacheMap.clear()
+}
+
+// Only a real 404 from the API means the record does not exist. Timeouts and server errors
+// are retried once, and any remaining failure is rethrown so pages never show
+// "404 Not Found" for a record that exists but could not be loaded.
+async function fetchOrNullIfMissing<T>(path: string): Promise<T | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await apiFetch<T>(path)
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0
+      if (status === 404) return null
+      if (attempt >= 1 || (status >= 400 && status < 500)) throw error
+      await new Promise(resolve => setTimeout(resolve, 400))
+    }
+  }
 }
 
 export async function fetchAnnouncementMessages() {
@@ -106,17 +122,13 @@ export async function fetchCategoryBySlug(slug: string) {
   const cached = getCached<{ id: number; name: string; slug: string; href: string }>(`cat_${slug}`)
   if (cached) return cached
 
-  try {
-    const data = await apiFetch<{ category: { id: number; name: string; slug: string; href: string } }>(
-      `/storefront/categories/by-slug/${encodeURIComponent(slug)}`,
-    )
-    if (data.category) {
-      return setCache(`cat_${slug}`, data.category, 60000)
-    }
-    return null
-  } catch {
-    return null
+  const data = await fetchOrNullIfMissing<{ category: { id: number; name: string; slug: string; href: string } }>(
+    `/storefront/categories/by-slug/${encodeURIComponent(slug)}`,
+  )
+  if (data?.category) {
+    return setCache(`cat_${slug}`, data.category, 60000)
   }
+  return null
 }
 
 export async function fetchProducts(opts: {
@@ -203,15 +215,11 @@ export async function fetchProductBySlug(slug: string): Promise<StorefrontProduc
   const cached = getCached<StorefrontProduct>(`prod_${slug}`)
   if (cached) return cached
 
-  try {
-    const data = await apiFetch<{ product: StorefrontProduct }>(`/storefront/products/${encodeURIComponent(slug)}`)
-    if (data.product) {
-      return setCache(`prod_${slug}`, data.product, 60000)
-    }
-    return null
-  } catch {
-    return null
+  const data = await fetchOrNullIfMissing<{ product: StorefrontProduct }>(`/storefront/products/${encodeURIComponent(slug)}`)
+  if (data?.product) {
+    return setCache(`prod_${slug}`, data.product, 60000)
   }
+  return null
 }
 
 export async function submitContactEnquiry(data: { name: string; email: string; phonenumber: string; message: string }) {

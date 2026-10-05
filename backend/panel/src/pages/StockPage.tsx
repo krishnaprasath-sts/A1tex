@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, ClipboardList, Loader2, Minus, Plus, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, ClipboardList, Loader2, Minus, Plus, Save, Search, X } from 'lucide-react'
 import { adjustStock, batchUpdateStock, getStockList, resolveImageUrl } from '../services/api'
 
 const ITEMS_PER_PAGE = 10
@@ -11,9 +11,20 @@ export default function StockPage() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [edits, setEdits] = useState<Record<number, { stockQty: number; lowStockThreshold: number }>>({})
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['admin-stock', currentPage],
-    queryFn: () => getStockList(currentPage, ITEMS_PER_PAGE),
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setCurrentPage(1)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-stock', currentPage, search],
+    queryFn: () => getStockList(currentPage, ITEMS_PER_PAGE, search),
   })
 
   const products = data?.items || []
@@ -138,7 +149,28 @@ export default function StockPage() {
               Stock
             </h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput.trim()); setCurrentPage(1) } }}
+                placeholder="Search by product, code, SKU, color..."
+                className="h-10 w-72 max-w-full rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-9 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
+              />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setSearchInput(''); setCurrentPage(1) }}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted)] hover:bg-gray-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => saveMutation.mutate()}
@@ -296,7 +328,7 @@ export default function StockPage() {
         ) : products.length === 0 ? (
           <div className="py-16 text-center">
             <ClipboardList className="mx-auto h-12 w-12 text-gray-300" />
-            <p className="mt-4 text-gray-500">No products found.</p>
+            <p className="mt-4 text-gray-500">{search ? `No products match "${search}".` : 'No products found.'}</p>
           </div>
         ) : (
           <div>

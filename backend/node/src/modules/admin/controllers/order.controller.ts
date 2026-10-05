@@ -18,12 +18,14 @@ import { generateStageInvoicesPdf } from '../../../services/order-invoice-pdf.se
 import { generateAddressesPdf } from '../../../services/order-addresses-pdf.service.js'
 import { syncInvoiceStatus } from '../../../services/invoice.service.js'
 import { writeAuditLog } from '../../../services/audit.service.js'
+import { syncOrderWithRazorpay, syncAllPendingOrders } from '../../../services/razorpay-sync.service.js'
 import { AppError } from '../../../utils/http.js'
 import { getAdminPermissions } from '../../../middleware/permissions.js'
 import { adminId, paginationSchema, idParam } from './utils.js'
 import { env } from '../../../config/env.js'
 
-export const statusMap: Record<string, { status: string }> = {
+export const statusMap: Record<string, { status?: string }> = {
+  'all': {},
   'pending-payment': { status: 'pending_payment' },
   'pending': { status: 'pending' },
   'confirmed': { status: 'confirmed' },
@@ -88,9 +90,83 @@ export const getPipelineCounts = async (_req: Request, res: Response) => {
 
   const counts: Record<string, number> = {}
   for (const [key, cfg] of Object.entries(statusMap)) {
-    counts[key] = countsByStatus.get(cfg.status) ?? 0
+    if (cfg.status) {
+      counts[key] = countsByStatus.get(cfg.status) ?? 0
+    }
   }
+  // Total of ALL orders in database
+  counts['all'] = Array.from(countsByStatus.values()).reduce((sum, val) => sum + val, 0)
   res.json({ counts })
+}
+
+export function buildOrderSearchWhere(q: string, stage?: string): Record<string, any> {
+  const where: any = {}
+  const normalizedStage = (stage || '').trim().replace(/_/g, '-')
+
+  if (normalizedStage && normalizedStage !== 'all' && statusMap[normalizedStage]?.status) {
+    where.status = statusMap[normalizedStage].status
+  }
+  // If stage === 'all' or empty, NO status exclusion is applied so ALL orders placed show in All Orders!
+
+  if (q) {
+    const trimmed = q.trim().toLowerCase()
+    const escaped = sequelize.escape(`%${trimmed}%`)
+    const words = trimmed.split(/\s+/).filter(Boolean)
+
+    const searchConditions: any[] = [
+      sequelize.literal(`LOWER(\`order_number\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`customer_name\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`customer_email\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`customer_mobile\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`tracking_number\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`razorpay_payment_id\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`razorpay_order_id\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`delivery_agent_name\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`coupon_code\`) LIKE ${escaped}`),
+      sequelize.literal(`LOWER(\`payment_method\`) LIKE ${escaped}`),
+      // Search matching customer in customers table (e.g. registered customer name/email/phone)
+      sequelize.literal(`\`customer_id\` IN (SELECT \`id\` FROM \`customers\` WHERE LOWER(\`name\`) LIKE ${escaped} OR LOWER(\`email\`) LIKE ${escaped} OR \`mobile\` LIKE ${escaped})`),
+      // Search entire shipping_address safely with LOWER to bypass MySQL JSON binary collation
+      sequelize.literal(`LOWER(CAST(\`shipping_address\` AS CHAR)) LIKE ${escaped}`),
+      // Search metadata with LOWER
+      sequelize.literal(`LOWER(CAST(\`metadata\` AS CHAR)) LIKE ${escaped}`),
+      // Search ordered product names / SKU in order_items
+      { id: { [Op.in]: sequelize.literal(`(SELECT \`order_id\` FROM \`order_items\` WHERE LOWER(\`name\`) LIKE ${escaped} OR LOWER(\`sku\`) LIKE ${escaped} OR LOWER(\`variant_label\`) LIKE ${escaped})`) } },
+    ]
+
+    // Multi-word name support (e.g. "Priti Bhamburdekar" or "Kanchan Sandeep Purkar")
+    if (words.length > 1) {
+      const custWordConditions = words.map(w => `LOWER(\`name\`) LIKE ${sequelize.escape(`%${w}%`)}`).join(' AND ')
+      searchConditions.push(sequelize.literal(`\`customer_id\` IN (SELECT \`id\` FROM \`customers\` WHERE ${custWordConditions})`))
+
+      const orderNameWordConditions = words.map(w => `LOWER(\`customer_name\`) LIKE ${sequelize.escape(`%${w}%`)}`).join(' AND ')
+      searchConditions.push(sequelize.literal(`(${orderNameWordConditions})`))
+
+      const shipWordConditions = words.map(w => `LOWER(CAST(\`shipping_address\` AS CHAR)) LIKE ${sequelize.escape(`%${w}%`)}`).join(' AND ')
+      searchConditions.push(sequelize.literal(`(${shipWordConditions})`))
+    }
+
+    const strippedHash = trimmed.replace(/^[#\s]+/, '')
+    const numericSearch = Number(strippedHash)
+    if (!isNaN(numericSearch) && numericSearch > 0 && String(numericSearch) === strippedHash) {
+      searchConditions.push({ id: numericSearch })
+    }
+
+    const digitsOnly = trimmed.replace(/\D/g, '')
+    if (digitsOnly.length >= 4) {
+      searchConditions.push(sequelize.literal(`\`customer_mobile\` LIKE ${sequelize.escape(`%${digitsOnly}%`)}`))
+      if (digitsOnly.length === 12 && digitsOnly.startsWith('91')) {
+        searchConditions.push(sequelize.literal(`\`customer_mobile\` LIKE ${sequelize.escape(`%${digitsOnly.slice(2)}%`)}`))
+      } else if (digitsOnly.length === 10) {
+        searchConditions.push(sequelize.literal(`\`customer_mobile\` LIKE ${sequelize.escape(`%91${digitsOnly}%`)}`))
+      }
+      searchConditions.push(sequelize.literal(`LOWER(CAST(\`shipping_address\` AS CHAR)) LIKE ${sequelize.escape(`%${digitsOnly}%`)}`))
+    }
+
+    where[Op.or] = searchConditions
+  }
+
+  return where
 }
 
 export const getPipelineStage = async (req: Request, res: Response) => {
@@ -99,7 +175,45 @@ export const getPipelineStage = async (req: Request, res: Response) => {
   if (!cfg) throw new AppError(404, 'Invalid pipeline stage.')
 
   const { page, perPage } = paginationSchema.parse(req.query)
-  const where = { status: cfg.status }
+  const search = typeof req.query.search === 'string'
+    ? req.query.search.trim()
+    : typeof req.query.q === 'string'
+    ? req.query.q.trim()
+    : ''
+
+  const where = buildOrderSearchWhere(search, stage)
+
+  const [rows, total] = await Promise.all([
+    Order.findAll({
+      where,
+      order: [['id', 'DESC']],
+      offset: (page - 1) * perPage,
+      limit: perPage,
+      paranoid: false,
+      include: [{ model: Customer }],
+    }),
+    Order.count({ where, paranoid: false }),
+  ])
+
+  res.json({
+    items: rows.map((row: any) => row.get({ plain: true })),
+    total,
+    page,
+    perPage,
+    totalPages: Math.ceil(total / perPage),
+  })
+}
+
+export const searchOrders = async (req: Request, res: Response) => {
+  const { page, perPage } = paginationSchema.parse(req.query)
+  const q = typeof req.query.q === 'string'
+    ? req.query.q.trim()
+    : typeof req.query.search === 'string'
+    ? req.query.search.trim()
+    : ''
+  const stage = typeof req.query.stage === 'string' ? req.query.stage.trim() : ''
+
+  const where = buildOrderSearchWhere(q, stage)
 
   const [rows, total] = await Promise.all([
     Order.findAll({
@@ -197,71 +311,64 @@ export const transitionOrder = async (req: Request, res: Response) => {
     updates.deliveredAt = new Date()
   }
 
-  // COD confirmation: deduct stock + apply coupon when moving out of pending_payment,
-  // whether the admin sends it straight to 'pending' or directly to 'confirmed' — both
-  // are valid per validTransitions, but only 'pending' used to be handled here, so a
-  // pending_payment → confirmed transition silently skipped stock deduction/coupon
-  // application while still emailing the customer an "Order Confirmed" notice.
+  // Confirmation: deduct stock + apply coupon when moving out of pending_payment,
+  // whether the admin sends it straight to 'pending' or directly to 'confirmed'.
   if (currentStatus === 'pending_payment' && (body.nextStatus === 'pending' || body.nextStatus === 'confirmed')) {
     const o = (order.get({ plain: true }) as any)
-    const paymentMethod = o.metadata?.paymentMethod as string | undefined
+    const paymentMethod = (o.metadata?.paymentMethod || o.paymentMethod || 'online').toLowerCase()
 
-    if (paymentMethod === 'cod') {
-      const orderItems = await OrderItem.findAll({ where: { orderId: id } })
-      for (const item of orderItems) {
-        const itemPlain = item.get({ plain: true }) as any
-        if (itemPlain.variantId) {
-          const v = await ProductVariant.findOne({ where: { id: itemPlain.variantId } })
-          if (v) {
-            const currentStock = (v as any).stockQty ?? 0
-            if (currentStock < itemPlain.quantity) {
-              throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
-            }
-            await v.update({ stockQty: currentStock - itemPlain.quantity })
+    const orderItems = await OrderItem.findAll({ where: { orderId: id } })
+    for (const item of orderItems) {
+      const itemPlain = item.get({ plain: true }) as any
+      if (itemPlain.variantId) {
+        const v = await ProductVariant.findOne({ where: { id: itemPlain.variantId } })
+        if (v) {
+          const currentStock = (v as any).stockQty ?? 0
+          if (currentStock < itemPlain.quantity) {
+            throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
           }
-        } else if (itemPlain.productId) {
-          const p = await Product.findOne({ where: { id: itemPlain.productId } })
-          if (p) {
-            const currentStock = (p as any).stockQty ?? 0
-            if (currentStock < itemPlain.quantity) {
-              throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
-            }
-            await p.update({ stockQty: currentStock - itemPlain.quantity })
+          await v.update({ stockQty: currentStock - itemPlain.quantity })
+        }
+      } else if (itemPlain.productId) {
+        const p = await Product.findOne({ where: { id: itemPlain.productId } })
+        if (p) {
+          const currentStock = (p as any).stockQty ?? 0
+          if (currentStock < itemPlain.quantity) {
+            throw new AppError(400, `Insufficient stock for "${itemPlain.name}". Only ${currentStock} left.`)
           }
+          await p.update({ stockQty: currentStock - itemPlain.quantity })
         }
       }
-
-      // Apply coupon usage if present. The existing-row guard matches the two
-      // storefront confirmation paths: without it, this admin transition racing
-      // the customer's own self-confirm would write a second usage row for the
-      // same order and count the coupon twice.
-      if (o.couponId) {
-        const existing = await CouponUsage.findOne({ where: { orderId: id } })
-        if (!existing) {
-          await CouponUsage.create({
-            couponId: o.couponId,
-            orderId: id,
-            customerId: o.customerId || null,
-            customerEmail: o.customerEmail || null,
-            discountAmount: o.discount || 0,
-          })
-          await Coupon.increment('usedCount', { by: 1, where: { id: o.couponId } })
-        }
-      }
-
-      // Mark COD as confirmed in metadata
-      const existingMeta = o.metadata || {}
-      updates.metadata = {
-        ...existingMeta,
-        codConfirmedAt: new Date().toISOString(),
-      }
-
-      // The storefront's self-service confirmCodOrder notifies admin on COD confirmation —
-      // this admin-initiated transition was a separate code path that skipped it entirely.
-      sendAdminOrderNotification(env.ADMIN_EMAIL, o).catch((err: any) => {
-        console.error(`[Order ${o.orderNumber}] Admin notification failed:`, err.message)
-      })
     }
+
+    // Apply coupon usage if present
+    if (o.couponId) {
+      const existing = await CouponUsage.findOne({ where: { orderId: id } })
+      if (!existing) {
+        await CouponUsage.create({
+          couponId: o.couponId,
+          orderId: id,
+          customerId: o.customerId || null,
+          customerEmail: o.customerEmail || null,
+          discountAmount: o.discount || 0,
+        })
+        await Coupon.increment('usedCount', { by: 1, where: { id: o.couponId } })
+      }
+    }
+
+    if (!body.paymentStatus && paymentMethod !== 'cod') {
+      updates.paymentStatus = 'paid'
+    }
+
+    const existingMeta = o.metadata || {}
+    updates.metadata = {
+      ...existingMeta,
+      adminConfirmedAt: new Date().toISOString(),
+    }
+
+    sendAdminOrderNotification(env.ADMIN_EMAIL, o).catch((err: any) => {
+      console.error(`[Order ${o.orderNumber}] Admin notification failed:`, err.message)
+    })
   }
 
   if (body.nextStatus === 'cancelled') {
@@ -670,4 +777,16 @@ export const updateOrderPayment = async (req: Request, res: Response) => {
 
   res.json({ success: true, item: updated })
 }
+
+export const syncOrderRazorpay = async (req: Request, res: Response) => {
+  const { id } = idParam.parse(req.params)
+  const result = await syncOrderWithRazorpay(Number(id))
+  res.json(result)
+}
+
+export const syncAllPendingRazorpay = async (_req: Request, res: Response) => {
+  const result = await syncAllPendingOrders(50)
+  res.json(result)
+}
+
 

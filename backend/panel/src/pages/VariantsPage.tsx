@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -74,6 +74,15 @@ export default function VariantsPage() {
   const [uploadWarnings, setUploadWarnings] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setCurrentPage(1)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [showImportModal, setShowImportModal] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -457,8 +466,8 @@ export default function VariantsPage() {
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput.trim()); setCurrentPage(1) } }}
-                placeholder="Search variants..."
-                className="h-10 w-56 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
+                placeholder="Search by SKU, color, size, product..."
+                className="h-10 w-64 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-4 focus:ring-[var(--burgundy-soft)]"
               />
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
             </div>

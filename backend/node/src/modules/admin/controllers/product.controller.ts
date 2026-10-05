@@ -26,6 +26,7 @@ import {
 } from '../../../services/image.service.js'
 import { UPLOADS_DIR } from './upload.controller.js'
 import { adminId, paginationSchema } from './utils.js'
+import { notifyBackInStockAsync } from '../../../services/stock-notify.service.js'
 
 function generateSku(): string {
   const ts = Date.now().toString(36).toUpperCase().slice(-5)
@@ -254,6 +255,7 @@ export const updateProductVariant = async (req: Request, res: Response) => {
 
   const body = variantCreateSchema.parse(req.body)
   await assertUniqueVariantCombination(productId, body, variantId)
+  const stockBeforeUpdate = Number(variant.getDataValue('stockQty') ?? 0)
 
   await sequelize.transaction(async (t) => {
     if (body.sku && body.sku !== variant.getDataValue('sku')) {
@@ -295,6 +297,10 @@ export const updateProductVariant = async (req: Request, res: Response) => {
     entityId: String(variantId),
     details: body
   })
+
+  if (stockBeforeUpdate <= 0 && Number(body.stockQty) > 0) {
+    notifyBackInStockAsync(productId, variantId)
+  }
 
   res.json({ item: variant })
 }
@@ -511,55 +517,227 @@ export const reorderVariantImages = async (req: Request, res: Response) => {
 export const getAllVariants = async (req: Request, res: Response) => {
   const { page, perPage } = paginationSchema.parse(req.query)
   const productId = req.query.productId ? Number(req.query.productId) : undefined
-  const search = req.query.search ? String(req.query.search).trim() : ''
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
 
   const where: any = productId ? { productId } : {}
 
   if (search) {
-    const matchingProducts = await Product.findAll({
-      where: {
-        [Op.or]: [
-          { name: { [Op.like]: `%${search}%` } },
-          { code: { [Op.like]: `%${search}%` } },
-        ],
-      },
-      attributes: ['id'],
+    const rawSearch = search.trim()
+    const lowerSearch = rawSearch.toLowerCase()
+    const words = lowerSearch.split(/\s+/).filter(w => w.length > 0)
+
+    // Helper to generate search variants (including sh/s phonetics)
+    const getVariants = (str: string): string[] => {
+      const set = new Set<string>()
+      const s = str.toLowerCase().trim()
+      if (!s) return []
+      set.add(s)
+      set.add(s.replace(/\s+/g, '-'))
+      set.add(s.replace(/-/g, ' '))
+      if (s.includes('sh')) {
+        set.add(s.replace(/sh/g, 's'))
+      } else if (s.includes('s')) {
+        set.add(s.replace(/s/g, 'sh'))
+      }
+      return Array.from(set)
+    }
+
+    const allSearchVariants = getVariants(lowerSearch)
+
+    // 1. Find matching categories & subcategories
+    const catOrClauses: any[] = []
+    for (const t of allSearchVariants) {
+      catOrClauses.push(
+        { name: { [Op.like]: `%${t}%` } },
+        { slug: { [Op.like]: `%${t}%` } },
+        { section: { [Op.like]: `%${t}%` } },
+        { tag: { [Op.like]: `%${t}%` } }
+      )
+    }
+    const matchingCategories = await Category.findAll({
+      where: { [Op.or]: catOrClauses },
+      attributes: ['id', 'parentId'],
+      paranoid: false,
       raw: true,
     }) as any[]
-    const productIdsFromSearch = matchingProducts.map(p => p.id)
 
-    where[Op.or] = [
-      { label: { [Op.like]: `%${search}%` } },
-      { sku: { [Op.like]: `%${search}%` } },
-      { colorName: { [Op.like]: `%${search}%` } },
-      ...(productIdsFromSearch.length > 0 ? [{ productId: { [Op.in]: productIdsFromSearch } }] : []),
-    ]
+    const catIdSet = new Set<number>()
+    for (const c of matchingCategories) {
+      if (c.id) catIdSet.add(Number(c.id))
+      if (c.parentId) catIdSet.add(Number(c.parentId))
+    }
+    if (catIdSet.size > 0) {
+      const childCats = await Category.findAll({
+        where: { parentId: { [Op.in]: Array.from(catIdSet) } },
+        attributes: ['id'],
+        paranoid: false,
+        raw: true,
+      }) as any[]
+      for (const cc of childCats) {
+        if (cc.id) catIdSet.add(Number(cc.id))
+      }
+    }
+    const matchedCategoryIds = Array.from(catIdSet)
+
+    // 2. Find matching products (by code, name, type, category, tag, categoryId, subCategoryId)
+    const productOrClauses: any[] = []
+    for (const t of allSearchVariants) {
+      productOrClauses.push(
+        { name: { [Op.like]: `%${t}%` } },
+        { code: { [Op.like]: `%${t}%` } },
+        { type: { [Op.like]: `%${t}%` } },
+        { slug: { [Op.like]: `%${t}%` } },
+        { category: { [Op.like]: `%${t}%` } },
+        { color: { [Op.like]: `%${t}%` } },
+        { tag: { [Op.like]: `%${t}%` } },
+        { description: { [Op.like]: `%${t}%` } }
+      )
+    }
+    if (matchedCategoryIds.length > 0) {
+      productOrClauses.push(
+        { categoryId: { [Op.in]: matchedCategoryIds } },
+        { subCategoryId: { [Op.in]: matchedCategoryIds } }
+      )
+    }
+    if (/^\d+$/.test(rawSearch)) {
+      productOrClauses.push({ id: Number(rawSearch) })
+    }
+
+    const matchingProducts = await Product.findAll({
+      where: { [Op.or]: productOrClauses },
+      attributes: ['id'],
+      paranoid: false,
+      raw: true,
+    }) as any[]
+    const productIdsFromSearch = Array.from(new Set(matchingProducts.map(p => p.id).filter(Boolean)))
+
+    // 3. Match directly on ProductVariant fields: sku, label, color_name, size, variant_type
+    const variantOrClauses: any[] = []
+    for (const t of allSearchVariants) {
+      variantOrClauses.push(
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.sku')), { [Op.like]: `%${t}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.label')), { [Op.like]: `%${t}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.color_name')), { [Op.like]: `%${t}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.size')), { [Op.like]: `%${t}%` }),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.variant_type')), { [Op.like]: `%${t}%` })
+      )
+    }
+    if (/^\d+$/.test(rawSearch)) {
+      variantOrClauses.push({ id: Number(rawSearch) })
+    }
+    if (productIdsFromSearch.length > 0) {
+      variantOrClauses.push({ productId: { [Op.in]: productIdsFromSearch } })
+    }
+
+    if (words.length <= 1) {
+      if (productId) {
+        where[Op.and] = [{ productId }, { [Op.or]: variantOrClauses }]
+        delete where.productId
+      } else {
+        where[Op.or] = variantOrClauses
+      }
+    } else {
+      // Multi-word search: each word must match
+      const andWordConditions: any[] = []
+      for (const w of words) {
+        const wVariants = getVariants(w)
+        const wCatOrClauses: any[] = []
+        for (const t of wVariants) {
+          wCatOrClauses.push(
+            { name: { [Op.like]: `%${t}%` } },
+            { slug: { [Op.like]: `%${t}%` } }
+          )
+        }
+        const wMatchedCats = await Category.findAll({
+          where: { [Op.or]: wCatOrClauses },
+          attributes: ['id', 'parentId'],
+          paranoid: false,
+          raw: true,
+        }) as any[]
+        const wCatIds = wMatchedCats.map(c => c.id).filter(Boolean)
+
+        const wProdOrClauses: any[] = []
+        for (const t of wVariants) {
+          wProdOrClauses.push(
+            { name: { [Op.like]: `%${t}%` } },
+            { code: { [Op.like]: `%${t}%` } },
+            { type: { [Op.like]: `%${t}%` } },
+            { category: { [Op.like]: `%${t}%` } },
+            { color: { [Op.like]: `%${t}%` } },
+            { tag: { [Op.like]: `%${t}%` } }
+          )
+        }
+        if (wCatIds.length > 0) {
+          wProdOrClauses.push(
+            { categoryId: { [Op.in]: wCatIds } },
+            { subCategoryId: { [Op.in]: wCatIds } }
+          )
+        }
+        const wMatchedProds = await Product.findAll({
+          where: { [Op.or]: wProdOrClauses },
+          attributes: ['id'],
+          paranoid: false,
+          raw: true,
+        }) as any[]
+        const wProdIds = wMatchedProds.map(p => p.id).filter(Boolean)
+
+        const wordOr: any[] = []
+        for (const t of wVariants) {
+          wordOr.push(
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.sku')), { [Op.like]: `%${t}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.label')), { [Op.like]: `%${t}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.color_name')), { [Op.like]: `%${t}%` }),
+            sequelize.where(sequelize.fn('LOWER', sequelize.col('ProductVariant.size')), { [Op.like]: `%${t}%` })
+          )
+        }
+        if (wProdIds.length > 0) {
+          wordOr.push({ productId: { [Op.in]: wProdIds } })
+        }
+        andWordConditions.push({ [Op.or]: wordOr })
+      }
+
+      const combinedOr = [
+        { [Op.and]: andWordConditions },
+        ...variantOrClauses,
+      ]
+
+      if (productId) {
+        where[Op.and] = [{ productId }, { [Op.or]: combinedOr }]
+        delete where.productId
+      } else {
+        where[Op.or] = combinedOr
+      }
+    }
   }
+
+  const hasWhere = Object.keys(where).length > 0 || Object.getOwnPropertySymbols(where).length > 0
+  const finalWhere = hasWhere ? where : undefined
 
   const [rows, total] = await Promise.all([
     ProductVariant.findAll({
-      where,
+      where: finalWhere,
       include: [
-        { model: Product, required: true, attributes: ['id', 'name', 'code', 'imageUrl', 'categoryId', 'gender'] },
+        { model: Product, required: true, attributes: ['id', 'name', 'code', 'imageUrl', 'categoryId', 'subCategoryId', 'gender'] },
         { model: VariantImage, as: 'images', attributes: ['id', 'imageUrl', 'sortOrder'], order: [['sortOrder', 'ASC']] },
       ],
       order: [['id', 'DESC']],
       offset: (page - 1) * perPage,
       limit: perPage,
     }),
-    ProductVariant.count({ where }),
+    ProductVariant.count({ where: finalWhere }),
   ])
 
-  const allCategories = await Category.findAll({ attributes: ['id', 'name', 'parentId'], paranoid: true })
+  const allCategories = await Category.findAll({ attributes: ['id', 'name', 'parentId'], paranoid: false, raw: true }) as any[]
   const catMap: Record<number, { name: string; parentId: number | null }> = {}
   for (const c of allCategories) {
-    catMap[Number(c.get('id'))] = { name: String(c.get('name')), parentId: c.get('parentId') as number | null }
+    catMap[Number(c.id)] = { name: String(c.name), parentId: c.parentId ? Number(c.parentId) : null }
   }
 
   res.json({
     items: rows.map(r => {
       const plain: any = r.get({ plain: true })
       const catId = plain.Product?.categoryId
+      const subCatId = plain.Product?.subCategoryId
       if (catId && catMap[catId]) {
         const cat = catMap[catId]
         if (cat.parentId && catMap[cat.parentId]) {
@@ -567,8 +745,11 @@ export const getAllVariants = async (req: Request, res: Response) => {
           plain.Product.subcategoryName = cat.name
         } else {
           plain.Product.categoryName = cat.name
-          plain.Product.subcategoryName = null
+          plain.Product.subcategoryName = subCatId && catMap[subCatId] ? catMap[subCatId].name : null
         }
+      } else if (subCatId && catMap[subCatId]) {
+        plain.Product.categoryName = null
+        plain.Product.subcategoryName = catMap[subCatId].name
       } else {
         if (plain.Product) {
           plain.Product.categoryName = null
@@ -586,10 +767,34 @@ export const getAllVariants = async (req: Request, res: Response) => {
 
 export const getStockList = async (req: Request, res: Response) => {
   const { page, perPage } = paginationSchema.parse(req.query)
+  const search = String(req.query.search || '').trim().slice(0, 120)
+
+  const where: Record<string | symbol, unknown> = { status: ['active', 'draft'] }
+  if (search) {
+    const like = `%${search}%`
+    const escapedLike = sequelize.escape(like)
+    // Variants are matched through a subquery rather than the include, so the
+    // product still comes back with all of its variants and paging stays exact.
+    where[Op.or] = [
+      { name: { [Op.like]: like } },
+      { code: { [Op.like]: like } },
+      {
+        id: {
+          [Op.in]: sequelize.literal(`(
+            SELECT pv.product_id FROM product_variants pv
+            WHERE pv.sku LIKE ${escapedLike}
+              OR pv.label LIKE ${escapedLike}
+              OR pv.color_name LIKE ${escapedLike}
+              OR pv.size LIKE ${escapedLike}
+          )`),
+        },
+      },
+    ]
+  }
 
   const [rows, total] = await Promise.all([
     Product.findAll({
-      where: { status: ['active', 'draft'] },
+      where,
       include: [{
         model: ProductVariant,
         as: 'variants',
@@ -600,7 +805,7 @@ export const getStockList = async (req: Request, res: Response) => {
       offset: (page - 1) * perPage,
       limit: perPage,
     }),
-    Product.count({ where: { status: ['active', 'draft'] } }),
+    Product.count({ where }),
   ])
 
   const allVariantIds: number[] = []
@@ -672,6 +877,7 @@ export const updateStockBatch = async (req: Request, res: Response) => {
 
       auditDetails.push({
         variantId: u.variantId,
+        productId,
         before: { stockQty: beforeStock, lowStockThreshold: beforeThreshold },
         after: { stockQty: u.stockQty, lowStockThreshold: u.lowStockThreshold ?? beforeThreshold },
         delta: u.stockQty - beforeStock,
@@ -689,6 +895,12 @@ export const updateStockBatch = async (req: Request, res: Response) => {
     entityId: updates.map(u => u.variantId).join(','),
     details: auditDetails,
   })
+
+  for (const d of auditDetails) {
+    if (d.before.stockQty <= 0 && d.after.stockQty > 0) {
+      notifyBackInStockAsync(d.productId, d.variantId)
+    }
+  }
 
   res.json({ items: results })
 }
@@ -726,6 +938,10 @@ export const adjustStock = async (req: Request, res: Response) => {
       after: result.after,
     },
   })
+
+  if (result.before <= 0 && result.after > 0) {
+    notifyBackInStockAsync(result.productId, variantId)
+  }
 
   res.json({
     item: result.variant,

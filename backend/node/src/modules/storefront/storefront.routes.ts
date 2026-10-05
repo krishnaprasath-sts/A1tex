@@ -128,6 +128,60 @@ router.post('/unsubscribe', asyncHandler(async (req, res) => {
   res.json({ message: 'You have been unsubscribed from marketing emails.' })
 }))
 
+/* ── Back-in-Stock Notification Routes ─── */
+router.post('/stock-notify', optionalCustomerAuth, asyncHandler(async (req, res) => {
+  const productId = Number(req.body?.productId)
+  const variantId = req.body?.variantId != null && req.body.variantId !== '' ? Number(req.body.variantId) : null
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  const phoneDigits = typeof req.body?.phone === 'string' ? req.body.phone.replace(/\D/g, '') : ''
+  const customerName = typeof req.body?.customerName === 'string' ? req.body.customerName.trim().slice(0, 140) : ''
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    throw new AppError(400, 'This product is not available for notifications.')
+  }
+  if (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0)) {
+    throw new AppError(400, 'Invalid product variant.')
+  }
+  if (!email || email.length > 190 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AppError(400, 'Please enter a valid email address.')
+  }
+  if (phoneDigits && phoneDigits.length !== 10) {
+    throw new AppError(400, 'Please enter a valid 10-digit phone number.')
+  }
+
+  const { Product, ProductVariant, StockNotification } = await import('../../models/index.js')
+  const product = await Product.findByPk(productId, { attributes: ['id'] })
+  if (!product) throw new AppError(404, 'Product not found.')
+
+  let resolvedVariantId: number | null = null
+  if (variantId !== null) {
+    const variant = await ProductVariant.findOne({ where: { id: variantId, productId }, attributes: ['id'] })
+    if (variant) resolvedVariantId = variantId
+  }
+
+  // One open request per email per variant — tapping Notify Me again just
+  // refreshes the contact details instead of queuing a second email.
+  const existing = await StockNotification.findOne({
+    where: { productId, variantId: resolvedVariantId, email, notifiedAt: null },
+  })
+  if (existing) {
+    await existing.update({
+      ...(phoneDigits ? { phone: phoneDigits } : {}),
+      ...(customerName ? { customerName } : {}),
+    })
+  } else {
+    await StockNotification.create({
+      productId,
+      variantId: resolvedVariantId,
+      email,
+      phone: phoneDigits || null,
+      customerName: customerName || null,
+    })
+  }
+
+  res.json({ success: true, message: 'We will notify you once this product is back in stock.' })
+}))
+
 /* ── Contact Enquiry Routes ─── */
 router.post('/contact-enquiries', asyncHandler(async (req, res) => {
   const { name, email, phonenumber, message } = req.body

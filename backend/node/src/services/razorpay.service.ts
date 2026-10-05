@@ -54,8 +54,20 @@ export function verifyPayment(params: {
   return expectedSignature === params.razorpaySignature
 }
 
+export async function fetchRazorpayOrder(orderId: string): Promise<any> {
+  return getRazorpayInstance().orders.fetch(orderId)
+}
+
+export async function fetchOrderPayments(orderId: string): Promise<any> {
+  return getRazorpayInstance().orders.fetchPayments(orderId)
+}
+
 export async function fetchPayment(paymentId: string) {
   return getRazorpayInstance().payments.fetch(paymentId)
+}
+
+export async function fetchAllPayments(params?: { count?: number; skip?: number; from?: number; to?: number }) {
+  return getRazorpayInstance().payments.all(params)
 }
 
 export async function capturePayment(paymentId: string, amount: number) {
@@ -69,3 +81,4 @@ export async function refundPayment(paymentId: string, amount?: number): Promise
   }
   return getRazorpayInstance().payments.refund(paymentId, opts)
 }
+

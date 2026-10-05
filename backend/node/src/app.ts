@@ -103,6 +103,9 @@ app.use(rateLimit({
 }))
 
 app.use('/api', routes)
+app.use('/api', (req, res) => {
+  res.status(404).json({ message: `API route not found: ${req.method} ${req.originalUrl.split('?')[0]}` })
+})
 app.use('/uploads', (req, res, next) => {
   if (req.path.toLowerCase().endsWith('.svg')) {
     return res.status(403).json({ error: 'SVG files are blocked for security reasons.' })

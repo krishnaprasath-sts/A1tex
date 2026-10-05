@@ -869,13 +869,30 @@ export async function runMigrations() {
     'users',
     'price_drop_email_logs',
     'price_drop_events',
-    'stock_notifications',
   ]
   for (const table of unusedTables) {
     try {
       await qi.sequelize.query(`DROP TABLE IF EXISTS \`${table}\``)
     } catch { /* ignored */ }
   }
+
+  // ─── Back-in-stock notification requests ──────────────────────
+  await createTableIfMissing(qi, 'stock_notifications', {
+    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    product_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    variant_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+    email: { type: DataTypes.STRING(190), allowNull: false },
+    phone: { type: DataTypes.STRING(32), allowNull: true },
+    customer_name: { type: DataTypes.STRING(140), allowNull: true },
+    notified_at: { type: DataTypes.DATE, allowNull: true },
+    ...timestamps,
+  })
+  await safeAddColumn('stock_notifications', 'phone', { type: DataTypes.STRING(32), allowNull: true })
+  await safeAddColumn('stock_notifications', 'customer_name', { type: DataTypes.STRING(140), allowNull: true })
+  await safeAddColumn('stock_notifications', 'variant_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true })
+  await safeAddColumn('stock_notifications', 'notified_at', { type: DataTypes.DATE, allowNull: true })
+  await safeAddIndex('stock_notifications', 'idx_stock_notifications_product_variant', ['product_id', 'variant_id'])
+  await safeAddIndex('stock_notifications', 'idx_stock_notifications_email', ['email'])
 
   console.log('Migration complete.')
 }

@@ -170,6 +170,7 @@ router.post('/razorpay', async (req, res) => {
       const rawBody = (req as any).rawBody ? (req as any).rawBody.toString('utf-8') : JSON.stringify(req.body)
       const expected = createHmac('sha256', webhookSecret).update(rawBody).digest('hex')
       if (expected !== signature) {
+        console.warn('[Webhook] Razorpay signature mismatch')
         return res.status(200).json({ ok: false, reason: 'Invalid signature' })
       }
     }
@@ -179,42 +180,79 @@ router.post('/razorpay', async (req, res) => {
       return res.status(200).json({ ok: false, reason: 'Missing event' })
     }
 
-    if (event === 'payment.captured') {
-      const payment = req.body?.payload?.payment?.entity
-      const razorpayOrderId = payment?.order_id
-      if (!razorpayOrderId) {
-        return res.status(200).json({ ok: false, reason: 'Missing order_id in payment' })
-      }
+    console.log(`[Webhook] Razorpay event received: ${event}`)
 
-      const orders = await Order.findAll({
-        where: { status: 'pending_payment' },
-      })
+    if (event === 'payment.captured' || event === 'order.paid' || event === 'payment.authorized') {
+      const payment = req.body?.payload?.payment?.entity
+      const rzpOrder = req.body?.payload?.order?.entity
+      const razorpayOrderId = payment?.order_id || rzpOrder?.id
+      const razorpayPaymentId = payment?.id
+      const orderNumberHint = payment?.notes?.orderNumber || rzpOrder?.receipt || payment?.notes?.receipt
 
       let matched: any = null
-      for (const order of orders) {
-        const meta = order.get('metadata') as Record<string, unknown> | null
-        if (meta?.razorpayOrderId === razorpayOrderId) {
-          matched = order
-          break
+
+      // Strategy 1: Find by razorpayOrderId DB column
+      if (razorpayOrderId) {
+        matched = await Order.findOne({
+          where: { razorpayOrderId },
+        })
+      }
+
+      // Strategy 2: Find by orderNumber
+      if (!matched && orderNumberHint) {
+        matched = await Order.findOne({
+          where: { orderNumber: orderNumberHint },
+        })
+      }
+
+      // Strategy 3: Scan pending_payment orders for metadata match
+      if (!matched && razorpayOrderId) {
+        const candidateOrders = await Order.findAll({
+          where: {
+            status: 'pending_payment',
+          },
+          order: [['id', 'DESC']],
+          limit: 50,
+        })
+        for (const order of candidateOrders) {
+          const meta = order.get('metadata') as Record<string, unknown> | null
+          if (meta?.razorpayOrderId === razorpayOrderId || (typeof meta === 'string' && (meta as string).includes(razorpayOrderId))) {
+            matched = order
+            break
+          }
         }
       }
 
+      // No email + amount fallback here: that pairing is shared by every checkout
+      // attempt the same customer made for the same cart, so it would confirm an
+      // abandoned attempt with the payment that belongs to a later one.
+
       if (!matched) {
-        return res.status(200).json({ ok: false, reason: `Order with razorpayOrderId ${razorpayOrderId} not found in pending_payment` })
+        console.warn(`[Webhook] No matching order found for Razorpay order ${razorpayOrderId || 'unknown'}, payment ${razorpayPaymentId || 'unknown'}`)
+        return res.status(200).json({ ok: false, reason: `Order not found for razorpayOrderId ${razorpayOrderId}` })
       }
 
       const matchedId = matched.get('id') as number
 
-      // Skip if already paid
-      const existingMeta = (matched.get({ plain: true }) as any).metadata || {}
-      if ((matched.get('paymentStatus') as string) !== 'paid') {
+      // If payment is authorized but not captured, auto-capture it
+      if (payment && payment.status === 'authorized') {
+        try {
+          const { capturePayment } = await import('../../services/razorpay.service.js')
+          await capturePayment(payment.id, Number(matched.getDataValue('grandTotal') || 0))
+        } catch (capErr: any) {
+          console.warn(`[Webhook] Auto-capture failed for ${payment.id}:`, capErr.message)
+        }
+      }
+
+      // Promote order if not already paid
+      if ((matched.get('paymentStatus') as string) !== 'paid' || (matched.get('status') as string) === 'pending_payment') {
         await processPaidOrder(matchedId, {
-          razorpayPaymentId: payment.id,
+          razorpayPaymentId: razorpayPaymentId || `pay_${Date.now()}`,
           webhookConfirmed: true,
         })
       }
 
-      console.log(`[Webhook] Payment confirmed for order ${matched.get('orderNumber')} via Razorpay webhook`)
+      console.log(`[Webhook] Payment confirmed for order ${matched.get('orderNumber')} via Razorpay webhook (${event})`)
       return res.status(200).json({ ok: true, orderId: matched.get('orderNumber') })
     }
 
@@ -225,7 +263,8 @@ router.post('/razorpay', async (req, res) => {
         const orders = await Order.findAll({ where: { status: 'pending_payment' } })
         for (const order of orders) {
           const meta = order.get('metadata') as Record<string, unknown> | null
-          if (meta?.razorpayOrderId === razorpayOrderId) {
+          const ordRzpId = order.getDataValue('razorpayOrderId') || meta?.razorpayOrderId
+          if (ordRzpId === razorpayOrderId) {
             const existingMeta = (order.get({ plain: true }) as any).metadata || {}
             await order.update({
               status: 'cancelled',
@@ -236,7 +275,7 @@ router.post('/razorpay', async (req, res) => {
                 failedAt: new Date().toISOString(),
               },
             })
-            console.log(`[Webhook] Payment failed for order ${order.get('orderNumber')}`)
+            console.log(`[Webhook] Payment failed marked for order ${order.get('orderNumber')}`)
             break
           }
         }
@@ -252,3 +291,4 @@ router.post('/razorpay', async (req, res) => {
 })
 
 export default router
+

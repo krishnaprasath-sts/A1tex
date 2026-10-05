@@ -33,8 +33,8 @@ export default function CategoriesPage() {
   }, [successMsg])
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['resource', 'categories', currentPage],
-    queryFn: () => listResource('categories', currentPage, ITEMS_PER_PAGE),
+    queryKey: ['resource', 'categories', currentPage, searchQuery],
+    queryFn: () => listResource('categories', currentPage, ITEMS_PER_PAGE, searchQuery.trim() || undefined),
   })
 
   const allItems = (data?.items || []) as any[]
@@ -62,7 +62,9 @@ export default function CategoriesPage() {
       list = list.filter(c =>
         (c.name || '').toLowerCase().includes(q) ||
         (c.slug || '').toLowerCase().includes(q) ||
-        (c.section || '').toLowerCase().includes(q)
+        (c.section || '').toLowerCase().includes(q) ||
+        (c.tag || '').toLowerCase().includes(q) ||
+        String(c.id || '') === q
       )
     }
     list.sort((a, b) => {

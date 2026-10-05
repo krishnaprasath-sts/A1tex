@@ -11,7 +11,8 @@ type ProductPageProps = {
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
-  const title = params.slug
+  const decoded = decodeURIComponent(params.slug || '')
+  const title = decoded
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')

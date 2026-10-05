@@ -21,9 +21,10 @@ export function generateMetadata({ params }: ProductPageProps): Metadata {
 export const revalidate = 60
 
 export default async function ProductRoute({ params }: ProductPageProps) {
-  const product = await fetchProductBySlug(params.slug)
+  const slug = decodeURIComponent(params.slug || '')
+  const product = await fetchProductBySlug(slug)
   if (!product) {
-    const category = await fetchCategoryBySlug(params.slug)
+    const category = await fetchCategoryBySlug(slug)
     if (category) {
       redirect(`/shop?category=${encodeURIComponent(category.name)}`)
     }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ChevronLeft, ChevronRight, Download, Eye, Loader2, ShoppingBag, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Download, Eye, Loader2, Search, ShoppingBag, X, XCircle } from 'lucide-react'
 import { apiBaseUrl, downloadDispatchedCodPendingInvoicesPdf, downloadStageAddressesPdf, downloadStageInvoicesPdf, getOrderPipelineCounts, getOrdersByStage, transitionOrderStatus, listResource } from '../services/api'
 import { displayValue } from './ResourceShared'
 import { useAdminAuth } from '../contexts/AdminAuthContext'
@@ -21,10 +21,15 @@ const stages = [
 ] as const
 
 const stageLabels: Record<string, string> = {
+  all: 'All Orders',
+  pending_payment: 'Pending Payment',
+  'pending-payment': 'Pending Payment',
   pending: 'New Orders',
   confirmed: 'Confirmed',
   packing: 'Packing',
   dispatched: 'Dispatched',
+  shipped: 'Dispatched',
+  out_for_delivery: 'Out for Delivery',
   'out-for-delivery': 'Out for Delivery',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
@@ -33,22 +38,31 @@ const stageLabels: Record<string, string> = {
 }
 
 const stageBadgeClass: Record<string, string> = {
+  all: 'bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200',
+  pending_payment: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  'pending-payment': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   pending: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   confirmed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   packing: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   dispatched: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  shipped: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  out_for_delivery: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
   'out-for-delivery': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  delivered: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  delivered: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   rto: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   returned: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300',
 }
 
 const advanceSteps: Record<string, { nextStatus: string; label: string }> = {
+  pending_payment: { nextStatus: 'pending', label: 'Place Order' },
+  'pending-payment': { nextStatus: 'pending', label: 'Place Order' },
   pending: { nextStatus: 'confirmed', label: 'Confirm' },
   confirmed: { nextStatus: 'packing', label: 'Pack' },
   packing: { nextStatus: 'dispatched', label: 'Dispatch / Ship' },
   dispatched: { nextStatus: 'out_for_delivery', label: 'Out for Delivery' },
+  shipped: { nextStatus: 'out_for_delivery', label: 'Out for Delivery' },
+  out_for_delivery: { nextStatus: 'delivered', label: 'Deliver' },
   'out-for-delivery': { nextStatus: 'delivered', label: 'Deliver' },
 }
 
@@ -68,6 +82,9 @@ export default function OrdersLayout() {
   }
 
   const [currentPage, setCurrentPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+
   const [shippingModal, setShippingModal] = useState<{ orderId: number; orderNumber: string; targetStatus: string } | null>(null)
   const [courierName, setCourierName] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
@@ -102,15 +119,42 @@ export default function OrdersLayout() {
   })
   const counts = countsData?.counts || {}
 
+  // Auto-trigger search when user types (debounced 300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput.trim())
+      setCurrentPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // When searching, search globally across all orders regardless of active tab
+  const queryStage = searchTerm.trim() ? 'all' : activeTab
+  const effectivePageSize = searchTerm.trim() ? 100 : ITEMS_PER_PAGE
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['orders-pipeline', activeTab, currentPage],
-    queryFn: () => getOrdersByStage(activeTab, currentPage, ITEMS_PER_PAGE),
+    queryKey: ['orders-pipeline', queryStage, currentPage, searchTerm],
+    queryFn: () => getOrdersByStage(queryStage, currentPage, effectivePageSize, searchTerm),
     refetchInterval: 15000,
   })
 
-  const items = data?.items || []
-  const totalItems = data?.total ?? items.length
+  const rawItems = (data?.items || []) as Array<Record<string, unknown>>
+
+  const displayItems = rawItems
+  const totalItems = data?.total ?? rawItems.length
   const totalPages = data?.totalPages ?? Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE))
+
+  function handleSearch(e?: React.FormEvent) {
+    if (e) e.preventDefault()
+    setSearchTerm(searchInput.trim())
+    setCurrentPage(1)
+  }
+
+  function handleClearSearch() {
+    setSearchInput('')
+    setSearchTerm('')
+    setCurrentPage(1)
+  }
 
   const advanceMut = useMutation({
     mutationFn: (args: {
@@ -145,6 +189,8 @@ export default function OrdersLayout() {
     },
   })
 
+
+
   function formatDate(val: unknown): string {
     if (!val) return '–'
     const d = new Date(String(val))
@@ -153,7 +199,8 @@ export default function OrdersLayout() {
   }
 
   function handleAdvanceClick(item: Record<string, unknown>) {
-    const stage = advanceSteps[activeTab]
+    const rawStatus = String(item.status || '').toLowerCase().replace(/_/g, '-')
+    const stage = advanceSteps[rawStatus] || advanceSteps[activeTab]
     if (!stage) return
 
     const meta = (item.metadata as Record<string, unknown>) || {}
@@ -228,9 +275,64 @@ export default function OrdersLayout() {
               Orders
             </h1>
           </div>
-
+          <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                placeholder="Search customer, phone, order #, email, address..."
+                className="h-10 w-72 md:w-96 rounded-lg border border-[var(--line)] bg-[#F9FAFB] pl-9 pr-8 text-sm outline-none transition-colors placeholder:text-[var(--muted)]/60 focus:border-[var(--burgundy)] focus:ring-2 focus:ring-[var(--burgundy-soft)]"
+              />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              {searchInput ? (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  title="Clear"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <button
+              type="submit"
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[var(--burgundy)] px-4 text-sm font-bold text-white transition-colors hover:opacity-90"
+            >
+              <Search className="h-4 w-4" />
+              Search
+            </button>
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="inline-flex h-10 items-center gap-1 rounded-lg border border-[var(--line)] px-3 text-xs font-bold text-[var(--muted)] hover:bg-[var(--panel-strong)]"
+              >
+                Reset
+              </button>
+            ) : null}
+          </form>
         </div>
       </section>
+
+      {searchTerm ? (
+        <div className="flex items-center justify-between rounded-lg bg-[var(--burgundy-soft)] px-4 py-2.5 text-sm text-[var(--burgundy)] border border-[var(--burgundy)]/20">
+          <div className="flex items-center gap-2 font-medium">
+            <Search className="h-4 w-4 flex-shrink-0" />
+            <span>
+              Search results for <strong>"{searchTerm}"</strong> across all orders — {totalItems} {totalItems === 1 ? 'order' : 'orders'} found
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearSearch}
+            className="text-xs font-bold hover:underline"
+          >
+            Clear Search
+          </button>
+        </div>
+      ) : null}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1">
@@ -262,7 +364,7 @@ export default function OrdersLayout() {
 
       {/* Table */}
       <section className="admin-card overflow-hidden rounded-lg">
-        {!isLoading && items.length > 0 ? (
+        {!isLoading && displayItems.length > 0 ? (
           <div className="border-b border-[var(--line)] px-5 py-3 flex justify-between items-center">
             <p className="text-[14.5px] font-semibold text-[var(--muted)]">
               Showing{' '}
@@ -288,7 +390,7 @@ export default function OrdersLayout() {
                   Print COD Pending Invoices
                 </button>
               ) : null}
-              {canManageInvoices ? (
+              {canManageInvoices && activeTab !== 'all' ? (
                 <button
                   type="button"
                   onClick={() => downloadStageInvoicesPdf(activeTab).catch(() => {})}
@@ -298,14 +400,16 @@ export default function OrdersLayout() {
                   Print All Invoices
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => downloadStageAddressesPdf(activeTab).catch(() => {})}
-                className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
-              >
-                <Download className="h-4 w-4" />
-                Download All Addresses
-              </button>
+              {activeTab !== 'all' ? (
+                <button
+                  type="button"
+                  onClick={() => downloadStageAddressesPdf(activeTab).catch(() => {})}
+                  className="inline-flex items-center gap-2 rounded bg-[var(--burgundy)] px-4 py-2 text-[13px] font-bold text-white transition-colors hover:opacity-90"
+                >
+                  <Download className="h-4 w-4" />
+                  Download All Addresses
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -327,27 +431,37 @@ export default function OrdersLayout() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => {
+              {displayItems.map((item, idx) => {
                 const serialNo = (currentPage - 1) * ITEMS_PER_PAGE + idx + 1
-                const shippingInfo = item.shippingAddress as Record<string, unknown> | null
+                let shippingInfo: Record<string, any> | null = null
+                if (typeof item.shippingAddress === 'string') {
+                  try { shippingInfo = JSON.parse(item.shippingAddress) } catch {}
+                } else if (item.shippingAddress && typeof item.shippingAddress === 'object') {
+                  shippingInfo = item.shippingAddress as Record<string, any>
+                }
+
                 const customerObj = item.Customer as Record<string, unknown> | null | undefined
-                const rawName = customerObj?.name
-                  ? String(customerObj.name)
-                  : shippingInfo
-                    ? [shippingInfo.firstName, shippingInfo.lastName].filter(Boolean).join(' ')
-                    : String(item.customerEmail || 'Guest')
+                const shipName = shippingInfo ? [shippingInfo.firstName, shippingInfo.lastName].filter(Boolean).join(' ').trim() : ''
+                const rawName = (
+                  String(item.customerName || '').trim() ||
+                  String(customerObj?.name || '').trim() ||
+                  shipName ||
+                  String(item.customerEmail || 'Guest')
+                )
                 const customerName = `${rawName} (${item.customerId ? 'Customer' : 'Guest'})`
                 const customerPhone = String(
-                  customerObj?.mobile || (shippingInfo && shippingInfo.phone) || '',
+                  item.customerMobile || customerObj?.mobile || (shippingInfo && shippingInfo.phone) || '',
                 )
-                const customerEmail = String(customerObj?.email || item.customerEmail || '')
+                const customerEmail = String(item.customerEmail || customerObj?.email || (shippingInfo && shippingInfo.email) || '')
                 const payment = String(item.paymentStatus || '')
                 let payClass = 'admin-badge '
                 if (payment === 'paid') payClass += 'admin-badge-success'
                 else if (payment === 'pending') payClass += 'admin-badge-warning'
                 else payClass += 'admin-badge-muted'
-                const canAdvance = canTransitionOrders && (activeTab in advanceSteps)
-                const canCancel = canTransitionOrders && activeTab !== 'delivered' && activeTab !== 'cancelled' && activeTab !== 'rto' && activeTab !== 'returned'
+                const rawStatus = String(item.status || '').toLowerCase().replace(/_/g, '-')
+                const currentStep = advanceSteps[rawStatus] || advanceSteps[String(item.status || '')] || advanceSteps[activeTab]
+                const canAdvance = canTransitionOrders && Boolean(currentStep)
+                const canCancel = canTransitionOrders && rawStatus !== 'delivered' && rawStatus !== 'cancelled' && rawStatus !== 'rto' && rawStatus !== 'returned'
 
                 return (
                   <tr
@@ -380,8 +494,8 @@ export default function OrdersLayout() {
                       {String(item.couponCode || '') || '–'}
                     </td>
                     <td className="px-5 py-4">
-                      <span className={activeTab === 'cancelled' ? 'admin-badge admin-badge-muted' : 'admin-badge admin-badge-info'}>
-                        {stageLabels[activeTab] || String(item.status || '')}
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${stageBadgeClass[rawStatus] || stageBadgeClass[String(item.status || '')] || (rawStatus === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800')}`}>
+                        {stageLabels[rawStatus] || stageLabels[String(item.status || '')] || String(item.status || '–')}
                       </span>
                     </td>
                     <td className="px-5 py-4 font-semibold">
@@ -406,14 +520,15 @@ export default function OrdersLayout() {
                         >
                           <Download className="h-4 w-4" />
                         </a>
-                        {canAdvance && advanceSteps[activeTab] ? (
+
+                        {canAdvance && currentStep ? (
                           <button
                             type="button"
                             onClick={() => handleAdvanceClick(item)}
                             disabled={advanceMut.isPending}
                             className="rounded bg-[var(--gold)] px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:opacity-90 disabled:opacity-50"
                           >
-                            {advanceMut.isPending ? '…' : advanceSteps[activeTab].label}
+                            {advanceMut.isPending ? '…' : currentStep.label}
                           </button>
                         ) : null}
                         {canCancel ? (
@@ -433,7 +548,7 @@ export default function OrdersLayout() {
                 )
               })}
 
-              {!items.length && !isLoading ? (
+              {!displayItems.length && !isLoading ? (
                 <tr>
                   <td colSpan={10} className="px-5 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
@@ -441,8 +556,17 @@ export default function OrdersLayout() {
                         <ShoppingBag className="h-7 w-7 text-[var(--burgundy)]" />
                       </div>
                       <p className="text-sm font-semibold text-[var(--muted)]">
-                        No orders in this stage
+                        {searchTerm ? `No orders found matching "${searchTerm}"` : 'No orders in this stage'}
                       </p>
+                      {searchTerm ? (
+                        <button
+                          type="button"
+                          onClick={handleClearSearch}
+                          className="text-xs font-bold text-[var(--burgundy)] hover:underline"
+                        >
+                          Clear search filter
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

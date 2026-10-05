@@ -25,7 +25,6 @@ import EmailCampaignsPage from '../pages/EmailCampaignsPage'
 import SettingsPage from '../pages/SettingsPage'
 import ShippingZonesPage from '../pages/ShippingZonesPage'
 import RolesPage from '../pages/RolesPage'
-import MyOrdersPage from '../pages/MyOrdersPage'
 import StaffPage from '../pages/StaffPage'
 import ReviewsPage from '../pages/ReviewsPage'
 import { resources, type ResourceConfig } from './resources'
@@ -158,11 +157,12 @@ function AppRoutes() {
           <Route path="roles" element={protect(<RolesPage />, ['manage_roles'])} />
           <Route path="settings" element={protect(<SettingsPage />, ['manage_settings'])} />
           <Route path="shipping-zones" element={protect(<ShippingZonesPage />, ['manage_settings'])} />
-          <Route path="my-orders" element={protect(<MyOrdersPage />, ['view_my_orders'])} />
           {orderPaths.map(path => (
             <Route key={path} path={path} element={protect(<OrdersLayout />, ['view_orders'])} />
           ))}
-          <Route path="orders/:id" element={protect(<OrderDetailPage />, ['view_orders', 'view_my_orders'])} />
+          <Route path="orders/all" element={<Navigate to="/orders/pending" replace />} />
+          <Route path="orders/pending-payment" element={<Navigate to="/orders/pending" replace />} />
+          <Route path="orders/:id" element={protect(<OrderDetailPage />, ['view_orders'])} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
